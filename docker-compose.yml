@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: beca-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER no arquivo .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - beca-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ms1-usuarios:
+    build: ./ms1-usuarios
+    container_name: beca-ms1-usuarios
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/usuarios_db
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?defina POSTGRES_USER no arquivo .env}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - beca-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ms2-transacoes:
+    build: ./ms2-transacoes
+    container_name: beca-ms2-transacoes
+    ports:
+      - "127.0.0.1:8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/transacoes_db
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?defina POSTGRES_USER no arquivo .env}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
+      MOCKAPI_BASE_URL: ${MOCKAPI_BASE_URL:-}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - beca-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  beca-net:
+
+volumes:
+  pgdata:

@@ -21,3 +21,12 @@ application-local.yml
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Segredos adicionais
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
