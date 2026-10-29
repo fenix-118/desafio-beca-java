@@ -13,12 +13,19 @@ import com.beca.usuarios.domain.model.Usuario;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public class UsuarioService implements
         CriarUsuarioUseCase,
         BuscarUsuarioUseCase,
         AtualizarUsuarioUseCase,
         ExcluirUsuarioUseCase {
+
+    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+    private static final int NOME_MAX = 120;
+    private static final int EMAIL_MAX = 160;
+    private static final int SENHA_MIN = 8;
+    private static final int SENHA_MAX = 72;
 
     private final UsuarioRepositoryPort repositorio;
     private final SenhaEncoderPort senhaEncoder;
@@ -30,14 +37,13 @@ public class UsuarioService implements
 
     @Override
     public Usuario criar(CriarUsuarioCommand comando) {
+        String nome = validarNome(comando.nome());
         String email = normalizarEmail(comando.email());
-        if (comando.senha() == null || comando.senha().isBlank()) {
-            throw new DadosInvalidosException("O campo 'senha' é obrigatório.");
-        }
+        validarSenha(comando.senha());
         if (repositorio.existePorEmail(email)) {
             throw new EmailJaCadastradoException();
         }
-        Usuario usuario = Usuario.novo(comando.nome(), email, senhaEncoder.codificar(comando.senha()));
+        Usuario usuario = Usuario.novo(nome, email, senhaEncoder.codificar(comando.senha()));
         return repositorio.salvar(usuario);
     }
 
@@ -55,12 +61,17 @@ public class UsuarioService implements
     @Override
     public Usuario atualizar(Long id, AtualizarUsuarioCommand comando) {
         Usuario usuario = buscarPorId(id);
+        String nome = validarNome(comando.nome());
         String email = normalizarEmail(comando.email());
+        boolean trocarSenha = comando.senha() != null && !comando.senha().isBlank();
+        if (trocarSenha) {
+            validarSenha(comando.senha());
+        }
         if (!email.equals(usuario.getEmail()) && repositorio.existePorEmail(email)) {
             throw new EmailJaCadastradoException();
         }
-        usuario.atualizarDados(comando.nome(), email);
-        if (comando.senha() != null && !comando.senha().isBlank()) {
+        usuario.atualizarDados(nome, email);
+        if (trocarSenha) {
             usuario.alterarSenhaHash(senhaEncoder.codificar(comando.senha()));
         }
         return repositorio.salvar(usuario);
@@ -74,10 +85,35 @@ public class UsuarioService implements
         repositorio.excluirPorId(id);
     }
 
+    private String validarNome(String nome) {
+        if (nome == null || nome.isBlank()) {
+            throw new DadosInvalidosException("O campo 'nome' é obrigatório.");
+        }
+        String limpo = nome.trim();
+        if (limpo.length() > NOME_MAX) {
+            throw new DadosInvalidosException("O campo 'nome' deve ter no máximo " + NOME_MAX + " caracteres.");
+        }
+        return limpo;
+    }
+
     private String normalizarEmail(String email) {
         if (email == null || email.isBlank()) {
             throw new DadosInvalidosException("O campo 'email' é obrigatório.");
         }
-        return email.trim().toLowerCase(Locale.ROOT);
+        String limpo = email.trim().toLowerCase(Locale.ROOT);
+        if (limpo.length() > EMAIL_MAX || !EMAIL.matcher(limpo).matches()) {
+            throw new DadosInvalidosException("E-mail inválido.");
+        }
+        return limpo;
+    }
+
+    private void validarSenha(String senha) {
+        if (senha == null || senha.isBlank()) {
+            throw new DadosInvalidosException("O campo 'senha' é obrigatório.");
+        }
+        if (senha.length() < SENHA_MIN || senha.length() > SENHA_MAX) {
+            throw new DadosInvalidosException(
+                    "A senha deve ter entre " + SENHA_MIN + " e " + SENHA_MAX + " caracteres.");
+        }
     }
 }

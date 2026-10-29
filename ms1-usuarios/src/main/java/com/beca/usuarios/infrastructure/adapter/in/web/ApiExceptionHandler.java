@@ -3,11 +3,13 @@ package com.beca.usuarios.infrastructure.adapter.in.web;
 import com.beca.usuarios.domain.exception.DadosInvalidosException;
 import com.beca.usuarios.domain.exception.EmailJaCadastradoException;
 import com.beca.usuarios.domain.exception.UsuarioNaoEncontradoException;
+import com.beca.usuarios.infrastructure.adapter.in.csv.ArquivoCsvInvalidoException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,6 +30,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(DadosInvalidosException.class)
     public ProblemDetail dadosInvalidos(DadosInvalidosException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(ArquivoCsvInvalidoException.class)
+    public ProblemDetail arquivoInvalido(ArquivoCsvInvalidoException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ProblemDetail arquivoGrande(MaxUploadSizeExceededException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.PAYLOAD_TOO_LARGE,
+                "O arquivo excede o tamanho máximo permitido (1 MB).");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

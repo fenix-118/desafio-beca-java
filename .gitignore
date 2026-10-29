@@ -30,3 +30,6 @@ Thumbs.db
 *.p12
 *.jks
 secrets/
+
+# CSVs com dados reais (os de exemplo em samples/ ficam versionados)
+*.local.csv
