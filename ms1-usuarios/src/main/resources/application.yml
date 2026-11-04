@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: ms1-usuarios
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/usuarios_db}
+    username: ${SPRING_DATASOURCE_USERNAME:${POSTGRES_USER:}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${POSTGRES_PASSWORD:}}
   servlet:
     multipart:
       max-file-size: 1MB
