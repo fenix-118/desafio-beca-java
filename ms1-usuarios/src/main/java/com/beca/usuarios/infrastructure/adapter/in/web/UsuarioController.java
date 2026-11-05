@@ -56,9 +56,11 @@ public class UsuarioController {
             description = "Retorna 201 com o usuário criado, 400 se os dados forem inválidos e 409 se o e-mail já existir.")
     @ApiResponse(responseCode = "201", description = "Usuário criado")
     @ApiResponse(responseCode = "400", description = "Dados inválidos",
-            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
     @ApiResponse(responseCode = "409", description = "E-mail já cadastrado",
-            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
     @PostMapping
     public ResponseEntity<UsuarioResponse> criar(@Valid @RequestBody CriarUsuarioRequest request) {
         Usuario usuario = criarUsuario.criar(
@@ -71,6 +73,7 @@ public class UsuarioController {
     }
 
     @Operation(summary = "Lista todos os usuários")
+    @ApiResponse(responseCode = "200", description = "Lista de usuários (pode ser vazia)")
     @GetMapping
     public List<UsuarioResponse> listar() {
         return buscarUsuario.listarTodos().stream()
@@ -80,13 +83,27 @@ public class UsuarioController {
 
     @Operation(summary = "Busca um usuário pelo id",
             description = "Retorna 404 se não existir.")
+    @ApiResponse(responseCode = "200", description = "Usuário encontrado")
+    @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
     @GetMapping("/{id}")
     public UsuarioResponse buscarPorId(@PathVariable Long id) {
         return UsuarioWebMapper.paraResposta(buscarUsuario.buscarPorId(id));
     }
 
     @Operation(summary = "Atualiza um usuário",
-            description = "Retorna 200 com o usuário atualizado, 400 se os dados forem inválidos, 404 se não existir e 409 se o novo e-mail já estiver em uso.")
+            description = "Retorna 200 com o usuário atualizado, 400 se os dados forem inválidos, 404 se não existir e 409 se o novo e-mail já estiver em uso. A senha é opcional: se vier vazia, a atual é mantida.")
+    @ApiResponse(responseCode = "200", description = "Usuário atualizado")
+    @ApiResponse(responseCode = "400", description = "Dados inválidos",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "409", description = "E-mail já cadastrado para outro usuário",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
     @PutMapping("/{id}")
     public UsuarioResponse atualizar(@PathVariable Long id,
                                      @Valid @RequestBody AtualizarUsuarioRequest request) {
@@ -97,6 +114,10 @@ public class UsuarioController {
 
     @Operation(summary = "Exclui um usuário",
             description = "Retorna 204 se excluído e 404 se não existir.")
+    @ApiResponse(responseCode = "204", description = "Usuário excluído", content = @Content)
+    @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> excluir(@PathVariable Long id) {
         excluirUsuario.excluir(id);
