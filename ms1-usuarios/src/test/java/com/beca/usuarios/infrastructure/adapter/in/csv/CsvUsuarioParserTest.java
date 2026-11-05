@@ -85,6 +85,27 @@ class CsvUsuarioParserTest {
         assertThat(linhas).hasSize(CsvUsuarioParser.MAX_LINHAS);
     }
 
+    @Test
+    void deveManterONumeroRealDaLinhaQuandoHaLinhaEmBrancoNoMeio() {
+        List<LinhaImportacao> linhas = parser.ler(csv("""
+                nome,email,senha
+                Ana,ana@beca.com,Senha@123
+
+                Bruno,bruno@beca.com,Senha@456
+                """));
+
+        assertThat(linhas).containsExactly(
+                new LinhaImportacao(2, "Ana", "ana@beca.com", "Senha@123"),
+                new LinhaImportacao(4, "Bruno", "bruno@beca.com", "Senha@456"));
+    }
+
+    @Test
+    void deveIgnorarLinhaSomenteComEspacosSemPerderANumeracao() {
+        List<LinhaImportacao> linhas = parser.ler(csv("nome,email,senha\n   \nAna,ana@beca.com,Senha@123\n"));
+
+        assertThat(linhas).containsExactly(new LinhaImportacao(3, "Ana", "ana@beca.com", "Senha@123"));
+    }
+
     // ---------- arquivos inválidos ----------
 
     @Test

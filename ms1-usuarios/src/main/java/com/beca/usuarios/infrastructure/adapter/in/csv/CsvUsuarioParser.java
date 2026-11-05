@@ -31,7 +31,9 @@ public class CsvUsuarioParser {
                     .setDelimiter(delimitador)
                     .setHeader()
                     .setSkipHeaderRecord(true)
-                    .setIgnoreEmptyLines(true)
+                    // Linhas em branco viram registros para o contador acompanhar as linhas reais
+                    // do arquivo; elas são descartadas abaixo, depois de contadas.
+                    .setIgnoreEmptyLines(false)
                     .setIgnoreHeaderCase(true)
                     .setTrim(true)
                     .build();
@@ -43,6 +45,9 @@ public class CsvUsuarioParser {
                 int numeroLinha = 1; // o cabeçalho é a linha 1
                 for (CSVRecord registro : parser) {
                     numeroLinha++;
+                    if (linhaEmBranco(registro)) {
+                        continue;
+                    }
                     if (linhas.size() >= MAX_LINHAS) {
                         throw new ArquivoCsvInvalidoException(
                                 "O arquivo excede o limite de " + MAX_LINHAS + " linhas de dados.");
@@ -91,6 +96,11 @@ public class CsvUsuarioParser {
             throw new ArquivoCsvInvalidoException(
                     "Cabeçalho inválido. O arquivo deve ter as colunas: nome, email, senha.");
         }
+    }
+
+    /** Linha vazia ou só com espaços: o parser entrega um único valor em branco. */
+    private static boolean linhaEmBranco(CSVRecord registro) {
+        return registro.size() == 1 && registro.get(0).isBlank();
     }
 
     private static String valor(CSVRecord registro, String coluna) {
