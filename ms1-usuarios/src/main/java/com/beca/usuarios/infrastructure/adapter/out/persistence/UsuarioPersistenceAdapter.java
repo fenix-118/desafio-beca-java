@@ -3,6 +3,7 @@ package com.beca.usuarios.infrastructure.adapter.out.persistence;
 import com.beca.usuarios.application.port.out.UsuarioRepositoryPort;
 import com.beca.usuarios.domain.exception.EmailJaCadastradoException;
 import com.beca.usuarios.domain.model.Usuario;
+import com.beca.usuarios.infrastructure.support.RestricaoBanco;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
@@ -24,7 +25,11 @@ public class UsuarioPersistenceAdapter implements UsuarioRepositoryPort {
             return paraDominio(jpa.saveAndFlush(paraEntidade(usuario)));
         } catch (DataIntegrityViolationException e) {
             // Corrida entre duas requisições com o mesmo e-mail: a unique constraint do banco decide.
-            throw new EmailJaCadastradoException();
+            if (RestricaoBanco.ehEmailUnico(e)) {
+                throw new EmailJaCadastradoException();
+            }
+            // Outra restrição: segue para o handler global, que responde com mensagem neutra.
+            throw e;
         }
     }
 
