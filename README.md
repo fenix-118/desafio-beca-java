@@ -60,6 +60,17 @@ docker compose up -d --build
 | MS2 - Transações | 8082 | http://localhost:8082/actuator/health |
 | PostgreSQL | 5433 | — |_
 
+### Documentação da API (Swagger)
+
+Com o MS1 rodando (pela IDE ou pelo Compose):
+
+| Recurso | Endereço |
+|---|---|
+| Swagger UI (documentação interativa) | http://localhost:8081/swagger-ui.html |
+| Especificação OpenAPI (JSON) | http://localhost:8081/v3/api-docs |
+
+Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação de CSV (botão **Try it out**). Há arquivos de exemplo em `samples/`.
+
 ## Tecnologias
 
 Java, Spring Boot, JPA, PostgreSQL, Docker Compose, JUnit, Mockito, Swagger/OpenAPI.
