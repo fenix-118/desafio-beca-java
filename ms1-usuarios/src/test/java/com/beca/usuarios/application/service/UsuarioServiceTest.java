@@ -92,6 +92,41 @@ class UsuarioServiceTest {
         verifyNoInteractions(repositorio, senhaEncoder);
     }
 
+    @Test
+    void deveAceitarSenhaComExatamente72Bytes() {
+        String senha = "a".repeat(72);
+        when(repositorio.existePorEmail("ana@beca.com")).thenReturn(false);
+        when(senhaEncoder.codificar(senha)).thenReturn("hash");
+        when(repositorio.salvar(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.criar(new CriarUsuarioCommand("Ana", "ana@beca.com", senha));
+
+        verify(senhaEncoder).codificar(senha);
+    }
+
+    @Test
+    void naoDeveCriarUsuarioComSenhaAcimaDe72BytesMesmoComMenosDe72Caracteres() {
+        String senha = "é".repeat(40); // 40 caracteres, mas 80 bytes em UTF-8
+        assertThat(senha).hasSize(40);
+
+        assertThrows(DadosInvalidosException.class,
+                () -> service.criar(new CriarUsuarioCommand("Ana", "ana@beca.com", senha)));
+
+        verifyNoInteractions(repositorio, senhaEncoder);
+    }
+
+    @Test
+    void naoDeveAtualizarParaSenhaAcimaDe72Bytes() {
+        Usuario existente = Usuario.novo("Ana", "ana@beca.com", "hash");
+        when(repositorio.buscarPorId(1L)).thenReturn(Optional.of(existente));
+
+        assertThrows(DadosInvalidosException.class,
+                () -> service.atualizar(1L, new AtualizarUsuarioCommand("Ana", "ana@beca.com", "é".repeat(40))));
+
+        verify(repositorio, never()).salvar(any());
+        verifyNoInteractions(senhaEncoder);
+    }
+
     // ---------- buscar e listar ----------
 
     @Test

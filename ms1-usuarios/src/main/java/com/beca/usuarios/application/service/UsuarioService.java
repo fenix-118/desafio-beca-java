@@ -11,6 +11,7 @@ import com.beca.usuarios.domain.exception.EmailJaCadastradoException;
 import com.beca.usuarios.domain.exception.UsuarioNaoEncontradoException;
 import com.beca.usuarios.domain.model.Usuario;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
@@ -25,7 +26,8 @@ public class UsuarioService implements
     private static final int NOME_MAX = 120;
     private static final int EMAIL_MAX = 160;
     private static final int SENHA_MIN = 8;
-    private static final int SENHA_MAX = 72;
+    /** Limite do BCrypt: ele considera no máximo 72 bytes da senha. */
+    private static final int SENHA_MAX_BYTES = 72;
 
     private final UsuarioRepositoryPort repositorio;
     private final SenhaEncoderPort senhaEncoder;
@@ -111,9 +113,14 @@ public class UsuarioService implements
         if (senha == null || senha.isBlank()) {
             throw new DadosInvalidosException("O campo 'senha' é obrigatório.");
         }
-        if (senha.length() < SENHA_MIN || senha.length() > SENHA_MAX) {
+        if (senha.length() < SENHA_MIN) {
             throw new DadosInvalidosException(
-                    "A senha deve ter entre " + SENHA_MIN + " e " + SENHA_MAX + " caracteres.");
+                    "A senha deve ter no mínimo " + SENHA_MIN + " caracteres.");
+        }
+        if (senha.getBytes(StandardCharsets.UTF_8).length > SENHA_MAX_BYTES) {
+            throw new DadosInvalidosException(
+                    "A senha é longa demais: o limite é de " + SENHA_MAX_BYTES
+                            + " bytes, e letras acentuadas ou símbolos ocupam mais de um byte cada.");
         }
     }
 }

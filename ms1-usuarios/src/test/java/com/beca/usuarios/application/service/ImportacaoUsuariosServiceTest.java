@@ -5,6 +5,8 @@ import com.beca.usuarios.application.port.in.CriarUsuarioUseCase.CriarUsuarioCom
 import com.beca.usuarios.application.port.in.ImportarUsuariosUseCase.FalhaImportacao;
 import com.beca.usuarios.application.port.in.ImportarUsuariosUseCase.LinhaImportacao;
 import com.beca.usuarios.application.port.in.ImportarUsuariosUseCase.ResultadoImportacao;
+import com.beca.usuarios.application.port.out.SenhaEncoderPort;
+import com.beca.usuarios.application.port.out.UsuarioRepositoryPort;
 import com.beca.usuarios.domain.exception.DadosInvalidosException;
 import com.beca.usuarios.domain.exception.EmailJaCadastradoException;
 import org.junit.jupiter.api.Test;
@@ -19,10 +21,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ImportacaoUsuariosServiceTest {
@@ -103,5 +103,24 @@ class ImportacaoUsuariosServiceTest {
 
         assertThrows(IllegalStateException.class,
                 () -> service.importar(List.of(new LinhaImportacao(2, "Ana", "ana@beca.com", "Senha@123"))));
+    }
+
+    @Test
+    void senhaAcimaDe72BytesViraFalhaDaLinhaSemInterromperOLote() {
+        UsuarioRepositoryPort repositorio = mock(UsuarioRepositoryPort.class);
+        SenhaEncoderPort encoder = mock(SenhaEncoderPort.class);
+        when(repositorio.salvar(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(encoder.codificar(anyString())).thenReturn("hash");
+        ImportacaoUsuariosService importacao =
+                new ImportacaoUsuariosService(new UsuarioService(repositorio, encoder));
+
+        ResultadoImportacao resultado = importacao.importar(List.of(
+                new LinhaImportacao(2, "Ana", "ana@beca.com", "Senha@123"),
+                new LinhaImportacao(3, "Bruno", "bruno@beca.com", "é".repeat(40)),
+                new LinhaImportacao(4, "Carla", "carla@beca.com", "Senha@789")));
+
+        assertThat(resultado.total()).isEqualTo(3);
+        assertThat(resultado.criados()).isEqualTo(2);
+        assertThat(resultado.falhas()).extracting(FalhaImportacao::numeroLinha).containsExactly(3);
     }
 }
