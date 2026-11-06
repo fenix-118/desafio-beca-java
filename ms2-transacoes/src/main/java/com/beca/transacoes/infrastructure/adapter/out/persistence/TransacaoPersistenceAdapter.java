@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 public class TransacaoPersistenceAdapter implements TransacaoRepositoryPort {
@@ -18,6 +19,13 @@ public class TransacaoPersistenceAdapter implements TransacaoRepositoryPort {
     static final List<TipoTransacao> TIPOS_DE_SAIDA = Arrays.stream(TipoTransacao.values())
             .filter(TipoTransacao::isSaida)
             .toList();
+
+    /**
+     * Limites usados quando o período não é informado. Evitam parâmetros nulos na consulta,
+     * que o PostgreSQL não consegue tipar.
+     */
+    static final Instant SEM_INICIO = Instant.parse("1970-01-01T00:00:00Z");
+    static final Instant SEM_FIM = Instant.parse("9999-12-31T00:00:00Z");
 
     private final TransacaoJpaRepository jpa;
 
@@ -43,6 +51,16 @@ public class TransacaoPersistenceAdapter implements TransacaoRepositoryPort {
     public BigDecimal somarSaidasAprovadas(Long usuarioId, Instant inicio, Instant fim) {
         BigDecimal soma = jpa.somarValores(usuarioId, StatusTransacao.APROVADA, TIPOS_DE_SAIDA, inicio, fim);
         return soma == null ? BigDecimal.ZERO : soma;
+    }
+
+    @Override
+    public List<Transacao> listar(Long usuarioId, Instant inicio, Instant fim, Set<TipoTransacao> tipos) {
+        return jpa.listar(usuarioId, tipos,
+                        inicio == null ? SEM_INICIO : inicio,
+                        fim == null ? SEM_FIM : fim)
+                .stream()
+                .map(TransacaoPersistenceAdapter::paraDominio)
+                .toList();
     }
 
     static TransacaoEntity paraEntidade(Transacao t) {

@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 
 public interface TransacaoJpaRepository extends JpaRepository<TransacaoEntity, Long> {
 
@@ -26,4 +27,17 @@ public interface TransacaoJpaRepository extends JpaRepository<TransacaoEntity, L
                             @Param("tipos") Collection<TipoTransacao> tipos,
                             @Param("inicio") Instant inicio,
                             @Param("fim") Instant fim);
+
+    @Query("""
+            select t from TransacaoEntity t
+            where t.usuarioId = :usuarioId
+              and t.tipo in :tipos
+              and t.criadaEm >= :inicio
+              and t.criadaEm < :fim
+            order by t.criadaEm desc, t.id desc
+            """)
+    List<TransacaoEntity> listar(@Param("usuarioId") Long usuarioId,
+                                 @Param("tipos") Collection<TipoTransacao> tipos,
+                                 @Param("inicio") Instant inicio,
+                                 @Param("fim") Instant fim);
 }

@@ -1,5 +1,6 @@
 package com.beca.transacoes.application.service;
 
+import com.beca.transacoes.application.port.in.ListarTransacoesUseCase.ListarTransacoesQuery;
 import com.beca.transacoes.application.port.in.RegistrarTransacaoUseCase.RegistrarTransacaoCommand;
 import com.beca.transacoes.application.port.out.ContaPort;
 import com.beca.transacoes.application.port.out.ServicoSaldoIndisponivelException;
@@ -22,7 +23,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -178,5 +182,45 @@ class TransacaoServiceTest {
         assertThatThrownBy(() -> service.buscarPorId(42L))
                 .isInstanceOf(TransacaoNaoEncontradaException.class)
                 .hasMessageContaining("42");
+    }
+
+    // ---------- listagem (BJ-6) ----------
+
+    @Test
+    void listarConverteOPeriodoParaDiasDeSaoPauloComOFimIncluido() {
+        when(repositorio.listar(any(), any(), any(), any())).thenReturn(List.of());
+
+        service.listar(new ListarTransacoesQuery(1L, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30),
+                TipoTransacao.COMPRA));
+
+        verify(repositorio).listar(1L,
+                Instant.parse("2026-11-01T03:00:00Z"),
+                Instant.parse("2026-12-01T03:00:00Z"),
+                EnumSet.of(TipoTransacao.COMPRA));
+    }
+
+    @Test
+    void listarSemFiltrosBuscaTodosOsTiposSemLimiteDePeriodo() {
+        when(repositorio.listar(any(), any(), any(), any())).thenReturn(List.of());
+
+        service.listar(new ListarTransacoesQuery(1L, null, null, null));
+
+        verify(repositorio).listar(1L, null, null, EnumSet.allOf(TipoTransacao.class));
+    }
+
+    @Test
+    void listarComInicioDepoisDoFimERecusado() {
+        assertThatThrownBy(() -> service.listar(new ListarTransacoesQuery(
+                1L, LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 1), null)))
+                .isInstanceOf(DadosInvalidosException.class)
+                .hasMessageContaining("'inicio'");
+        verifyNoInteractions(repositorio);
+    }
+
+    @Test
+    void listarExigeUsuario() {
+        assertThatThrownBy(() -> service.listar(new ListarTransacoesQuery(null, null, null, null)))
+                .isInstanceOf(DadosInvalidosException.class)
+                .hasMessageContaining("usuarioId");
     }
 }

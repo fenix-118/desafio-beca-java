@@ -103,4 +103,19 @@ class TransacaoPersistenceAdapterTest {
 
         assertThat(adapter.somarSaidasAprovadas(1L, AGORA, AGORA)).isEqualByComparingTo("0");
     }
+
+    @Test
+    void listarSemPeriodoUsaLimitesExtremosEConverteParaODominio() {
+        java.util.Set<TipoTransacao> tipos = java.util.EnumSet.of(TipoTransacao.COMPRA);
+        when(jpa.listar(1L, tipos, TransacaoPersistenceAdapter.SEM_INICIO, TransacaoPersistenceAdapter.SEM_FIM))
+                .thenReturn(java.util.List.of(new TransacaoEntity(3L, 1L, TipoTransacao.COMPRA,
+                        new BigDecimal("12.00"), Categoria.LAZER, null, null, StatusTransacao.APROVADA, null, AGORA)));
+
+        assertThat(adapter.listar(1L, null, null, tipos))
+                .singleElement()
+                .satisfies(t -> {
+                    assertThat(t.getId()).isEqualTo(3L);
+                    assertThat(t.getCategoria()).isEqualTo(Categoria.LAZER);
+                });
+    }
 }
