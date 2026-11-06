@@ -20,6 +20,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -83,5 +84,23 @@ class TransacaoPersistenceAdapterTest {
         when(jpa.findById(99L)).thenReturn(Optional.empty());
 
         assertThat(adapter.buscarPorId(99L)).isEmpty();
+    }
+
+    @Test
+    void somaDeSaidasConsideraSoAprovadasDosTiposDeSaida() {
+        Instant fim = AGORA.plusSeconds(3600);
+        when(jpa.somarValores(eq(1L), eq(StatusTransacao.APROVADA),
+                eq(java.util.List.of(TipoTransacao.RETIRADA, TipoTransacao.TRANSFERENCIA, TipoTransacao.COMPRA)),
+                eq(AGORA), eq(fim)))
+                .thenReturn(new BigDecimal("120.50"));
+
+        assertThat(adapter.somarSaidasAprovadas(1L, AGORA, fim)).isEqualByComparingTo("120.50");
+    }
+
+    @Test
+    void somaSemNenhumaTransacaoEZero() {
+        when(jpa.somarValores(any(), any(), any(), any(), any())).thenReturn(null);
+
+        assertThat(adapter.somarSaidasAprovadas(1L, AGORA, AGORA)).isEqualByComparingTo("0");
     }
 }

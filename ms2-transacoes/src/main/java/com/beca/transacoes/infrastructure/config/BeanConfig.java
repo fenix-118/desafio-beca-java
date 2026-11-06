@@ -1,15 +1,24 @@
 package com.beca.transacoes.infrastructure.config;
 
+import com.beca.transacoes.application.port.out.ContaPort;
 import com.beca.transacoes.application.port.out.TransacaoRepositoryPort;
 import com.beca.transacoes.application.service.TransacaoService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Clock;
+
 @Configuration
 public class BeanConfig {
 
+    /** Relógio injetado para os testes conseguirem fixar a data e a hora. */
     @Bean
-    public TransacaoService transacaoService(TransacaoRepositoryPort repositorio) {
-        return new TransacaoService(repositorio);
+    public Clock relogio() {
+        return Clock.systemUTC();
+    }
+
+    @Bean
+    public TransacaoService transacaoService(TransacaoRepositoryPort repositorio, ContaPort conta, Clock relogio) {
+        return new TransacaoService(repositorio, conta, relogio);
     }
 }
