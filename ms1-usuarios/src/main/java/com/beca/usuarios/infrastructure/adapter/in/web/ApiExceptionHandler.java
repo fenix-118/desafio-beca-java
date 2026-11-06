@@ -4,6 +4,10 @@ import com.beca.usuarios.domain.exception.DadosInvalidosException;
 import com.beca.usuarios.domain.exception.EmailJaCadastradoException;
 import com.beca.usuarios.domain.exception.UsuarioNaoEncontradoException;
 import com.beca.usuarios.infrastructure.adapter.in.csv.ArquivoCsvInvalidoException;
+import com.beca.usuarios.infrastructure.support.RestricaoBanco;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -17,6 +21,10 @@ import java.util.Map;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    static final String MENSAGEM_CONFLITO_DADOS = "Conflito de dados: o registro viola uma restrição do banco.";
+
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
     @ExceptionHandler(UsuarioNaoEncontradoException.class)
     public ProblemDetail naoEncontrado(UsuarioNaoEncontradoException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
@@ -25,6 +33,16 @@ public class ApiExceptionHandler {
     @ExceptionHandler(EmailJaCadastradoException.class)
     public ProblemDetail conflito(EmailJaCadastradoException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    /**
+     * Violações que o adapter não reconhece (o e-mail duplicado já vira EmailJaCadastradoException lá).
+     * O log grava só o nome da restrição: a mensagem do PostgreSQL traz os valores da linha.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail integridade(DataIntegrityViolationException ex) {
+        log.warn("Violação de integridade no banco: constraint={}", RestricaoBanco.nome(ex));
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, MENSAGEM_CONFLITO_DADOS);
     }
 
     @ExceptionHandler(DadosInvalidosException.class)

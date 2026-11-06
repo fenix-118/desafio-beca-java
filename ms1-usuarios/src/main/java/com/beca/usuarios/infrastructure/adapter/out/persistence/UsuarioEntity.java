@@ -1,5 +1,6 @@
 package com.beca.usuarios.infrastructure.adapter.out.persistence;
 
+import com.beca.usuarios.infrastructure.support.RestricaoBanco;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -12,7 +13,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "usuarios",
-        uniqueConstraints = @UniqueConstraint(name = "uk_usuarios_email", columnNames = "email"))
+        uniqueConstraints = @UniqueConstraint(name = RestricaoBanco.EMAIL_UNICO, columnNames = "email"))
 public class UsuarioEntity {
 
     @Id
