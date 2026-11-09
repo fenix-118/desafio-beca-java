@@ -27,3 +27,8 @@ conta:
     saldo: 1000.00
     limite-por-transacao: 500.00
     limite-diario: 800.00
+
+# MS1 (usuários): no Compose, MS1_BASE_URL aponta para o nome do serviço.
+ms1:
+  base-url: ${MS1_BASE_URL:http://localhost:8081}
+  timeout-ms: 2000

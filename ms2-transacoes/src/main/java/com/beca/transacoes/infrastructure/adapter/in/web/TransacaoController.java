@@ -51,9 +51,17 @@ public class TransacaoController {
 
     @Operation(summary = "Registra uma transação",
             description = "Avalia e grava a transação. Responde 201 com o id e o status (APROVADA ou REJEITADA); "
-                    + "uma transação rejeitada também é gravada e traz o motivo. Responde 400 se os dados forem inválidos.")
+                    + "uma transação rejeitada também é gravada e traz o motivo (transferência para usuário inexistente fica "
+                    + "REJEITADA com DESTINO_INEXISTENTE). Responde 400 se os dados forem inválidos, 404 se o dono não "
+                    + "existir no MS1 e 503 se o MS1 estiver fora do ar.")
     @ApiResponse(responseCode = "201", description = "Transação registrada (aprovada ou rejeitada)")
     @ApiResponse(responseCode = "400", description = "Dados inválidos",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "Usuário dono da transação não existe no MS1",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "503", description = "MS1 indisponível; nada é gravado",
             content = @Content(mediaType = "application/problem+json",
                     schema = @Schema(implementation = ProblemDetail.class)))
     @PostMapping

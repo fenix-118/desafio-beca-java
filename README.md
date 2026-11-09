@@ -83,6 +83,8 @@ Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, tr
 
 > Até a integração com a API Mock (pedido 2), o saldo e os limites vêm de `conta.padrao` no `application.yml` do MS2.
 
+> O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar: dono inexistente responde 404, transferência para usuário inexistente fica `REJEITADA` com `DESTINO_INEXISTENTE` e, com o MS1 fora do ar, responde 503 sem gravar nada. Pela IDE, suba o MS1 antes (endereço em `MS1_BASE_URL`, padrão `http://localhost:8081`).
+
 ## Tecnologias
 
 Java, Spring Boot, JPA, PostgreSQL, Docker Compose, JUnit, Mockito, Swagger/OpenAPI.

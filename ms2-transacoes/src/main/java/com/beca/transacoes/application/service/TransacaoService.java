@@ -6,8 +6,10 @@ import com.beca.transacoes.application.port.in.RegistrarTransacaoUseCase;
 import com.beca.transacoes.application.port.out.ContaPort;
 import com.beca.transacoes.application.port.out.ServicoSaldoIndisponivelException;
 import com.beca.transacoes.application.port.out.TransacaoRepositoryPort;
+import com.beca.transacoes.application.port.out.UsuarioPort;
 import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
+import com.beca.transacoes.domain.exception.UsuarioNaoEncontradoException;
 import com.beca.transacoes.domain.model.MensagensTransacao;
 import com.beca.transacoes.domain.model.MotivoRejeicao;
 import com.beca.transacoes.domain.model.SituacaoConta;
@@ -31,11 +33,14 @@ public class TransacaoService
 
     private final TransacaoRepositoryPort repositorio;
     private final ContaPort conta;
+    private final UsuarioPort usuarios;
     private final Clock relogio;
 
-    public TransacaoService(TransacaoRepositoryPort repositorio, ContaPort conta, Clock relogio) {
+    public TransacaoService(TransacaoRepositoryPort repositorio, ContaPort conta, UsuarioPort usuarios,
+                            Clock relogio) {
         this.repositorio = repositorio;
         this.conta = conta;
+        this.usuarios = usuarios;
         this.relogio = relogio;
     }
 
@@ -44,7 +49,15 @@ public class TransacaoService
         Transacao transacao = Transacao.solicitar(comando.usuarioId(), comando.tipo(), comando.valor(),
                 comando.categoria(), comando.usuarioDestinoId(), comando.descricao());
 
-        if (transacao.precisaDeSaldo()) {
+        // Sem dono confirmado no MS1 não existe transação válida para gravar.
+        if (!usuarios.existe(transacao.getUsuarioId())) {
+            throw new UsuarioNaoEncontradoException(transacao.getUsuarioId());
+        }
+
+        if (transacao.getUsuarioDestinoId() != null && !usuarios.existe(transacao.getUsuarioDestinoId())) {
+            // O dono existe e pediu a transferência: a tentativa fica registrada, rejeitada com o motivo.
+            transacao.rejeitar(MotivoRejeicao.DESTINO_INEXISTENTE);
+        } else if (transacao.precisaDeSaldo()) {
             avaliarSaida(transacao);
         } else {
             transacao.avaliar(null, null);

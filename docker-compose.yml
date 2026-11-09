@@ -47,6 +47,7 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?defina POSTGRES_USER no arquivo .env}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
       MOCKAPI_BASE_URL: ${MOCKAPI_BASE_URL:-}
+      MS1_BASE_URL: http://ms1-usuarios:8081
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -56,6 +57,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      ms1-usuarios:
+        condition: service_started
 
 networks:
   beca-net:

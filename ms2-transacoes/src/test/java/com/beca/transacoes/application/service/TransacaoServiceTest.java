@@ -4,9 +4,12 @@ import com.beca.transacoes.application.port.in.ListarTransacoesUseCase.ListarTra
 import com.beca.transacoes.application.port.in.RegistrarTransacaoUseCase.RegistrarTransacaoCommand;
 import com.beca.transacoes.application.port.out.ContaPort;
 import com.beca.transacoes.application.port.out.ServicoSaldoIndisponivelException;
+import com.beca.transacoes.application.port.out.ServicoUsuariosIndisponivelException;
 import com.beca.transacoes.application.port.out.TransacaoRepositoryPort;
+import com.beca.transacoes.application.port.out.UsuarioPort;
 import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
+import com.beca.transacoes.domain.exception.UsuarioNaoEncontradoException;
 import com.beca.transacoes.domain.model.Categoria;
 import com.beca.transacoes.domain.model.MotivoRejeicao;
 import com.beca.transacoes.domain.model.SituacaoConta;
@@ -56,11 +59,21 @@ class TransacaoServiceTest {
     @Mock
     private ContaPort conta;
 
+    @Mock
+    private UsuarioPort usuarios;
+
     private TransacaoService service;
 
     @BeforeEach
     void setUp() {
-        service = new TransacaoService(repositorio, conta, Clock.fixed(AGORA, ZoneOffset.UTC));
+        service = new TransacaoService(repositorio, conta, usuarios, Clock.fixed(AGORA, ZoneOffset.UTC));
+    }
+
+    /** O MS1 confirma que estes usuários existem. */
+    private void usuariosExistem(Long... ids) {
+        for (Long id : ids) {
+            when(usuarios.existe(id)).thenReturn(true);
+        }
     }
 
     private void salvarDevolveOMesmo() {
@@ -80,6 +93,7 @@ class TransacaoServiceTest {
 
     @Test
     void depositoEAprovadoSemConsultarAConta() {
+        usuariosExistem(1L);
         salvarDevolveOMesmo();
 
         Transacao t = service.registrar(new RegistrarTransacaoCommand(
@@ -92,6 +106,7 @@ class TransacaoServiceTest {
 
     @Test
     void retiradaAcimaDoSaldoERejeitadaComMotivoEFicaGravada() {
+        usuariosExistem(1L);
         salvarDevolveOMesmo();
         when(conta.consultar(1L)).thenReturn(CONTA);
         when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
@@ -105,6 +120,7 @@ class TransacaoServiceTest {
 
     @Test
     void osQuatroTiposPodemSerCriados() {
+        usuariosExistem(1L, 2L);
         salvarDevolveOMesmo();
         when(conta.consultar(1L)).thenReturn(CONTA);
         when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
@@ -122,6 +138,7 @@ class TransacaoServiceTest {
 
     @Test
     void limiteDiarioUsaODiaDeSaoPauloENaoODiaUtc() {
+        usuariosExistem(1L);
         salvarDevolveOMesmo();
         when(conta.consultar(1L)).thenReturn(CONTA);
         when(repositorio.somarSaidasAprovadas(1L, INICIO_DO_DIA_SP, FIM_DO_DIA_SP))
@@ -135,6 +152,7 @@ class TransacaoServiceTest {
 
     @Test
     void compraAcimaDoLimitePorTransacaoERejeitada() {
+        usuariosExistem(1L);
         salvarDevolveOMesmo();
         when(conta.consultar(1L)).thenReturn(CONTA);
         when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
@@ -146,6 +164,7 @@ class TransacaoServiceTest {
 
     @Test
     void servicoDeSaldoForaDoArRejeitaEGravaSemAprovarAsCegas() {
+        usuariosExistem(1L);
         salvarDevolveOMesmo();
         when(conta.consultar(1L)).thenThrow(new ServicoSaldoIndisponivelException("timeout", null));
 
@@ -163,7 +182,7 @@ class TransacaoServiceTest {
                 1L, TipoTransacao.TRANSFERENCIA, BigDecimal.TEN, Categoria.OUTROS, null, null)))
                 .isInstanceOf(DadosInvalidosException.class)
                 .hasMessageContaining("usuarioDestinoId");
-        verifyNoInteractions(conta, repositorio);
+        verifyNoInteractions(conta, repositorio, usuarios);
     }
 
     @Test
@@ -172,7 +191,7 @@ class TransacaoServiceTest {
                 1L, TipoTransacao.COMPRA, BigDecimal.TEN, null, null, null)))
                 .isInstanceOf(DadosInvalidosException.class)
                 .hasMessageContaining("categoria");
-        verifyNoInteractions(conta, repositorio);
+        verifyNoInteractions(conta, repositorio, usuarios);
     }
 
     @Test
@@ -182,6 +201,52 @@ class TransacaoServiceTest {
         assertThatThrownBy(() -> service.buscarPorId(42L))
                 .isInstanceOf(TransacaoNaoEncontradaException.class)
                 .hasMessageContaining("42");
+    }
+
+    // ---------- validação do usuário no MS1 ----------
+
+    @Test
+    void donoInexistenteNoMs1Responde404ENadaEGravado() {
+        when(usuarios.existe(1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.registrar(new RegistrarTransacaoCommand(
+                1L, TipoTransacao.DEPOSITO, BigDecimal.TEN, null, null, null)))
+                .isInstanceOf(UsuarioNaoEncontradoException.class)
+                .hasMessageContaining("1");
+        verifyNoInteractions(conta, repositorio);
+    }
+
+    @Test
+    void transferenciaParaDestinoInexistenteFicaRejeitadaEGravadaSemConsultarSaldo() {
+        when(usuarios.existe(1L)).thenReturn(true);
+        when(usuarios.existe(2L)).thenReturn(false);
+        salvarDevolveOMesmo();
+
+        Transacao t = service.registrar(saida(TipoTransacao.TRANSFERENCIA, "10.00"));
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.REJEITADA);
+        assertThat(t.getMotivoRejeicao()).isEqualTo(MotivoRejeicao.DESTINO_INEXISTENTE);
+        assertThat(gravada()).isSameAs(t);
+        verifyNoInteractions(conta);
+    }
+
+    @Test
+    void ms1ForaDoArNaoGravaNada() {
+        when(usuarios.existe(1L)).thenThrow(new ServicoUsuariosIndisponivelException("timeout", null));
+
+        assertThatThrownBy(() -> service.registrar(saida(TipoTransacao.COMPRA, "10.00")))
+                .isInstanceOf(ServicoUsuariosIndisponivelException.class);
+        verifyNoInteractions(conta, repositorio);
+    }
+
+    @Test
+    void ms1ForaDoArAoConferirODestinoNaoGravaNada() {
+        when(usuarios.existe(1L)).thenReturn(true);
+        when(usuarios.existe(2L)).thenThrow(new ServicoUsuariosIndisponivelException("timeout", null));
+
+        assertThatThrownBy(() -> service.registrar(saida(TipoTransacao.TRANSFERENCIA, "10.00")))
+                .isInstanceOf(ServicoUsuariosIndisponivelException.class);
+        verifyNoInteractions(conta, repositorio);
     }
 
     // ---------- listagem (BJ-6) ----------
