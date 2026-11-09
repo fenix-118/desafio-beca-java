@@ -62,14 +62,26 @@ docker compose up -d --build
 
 ### Documentação da API (Swagger)
 
-Com o MS1 rodando (pela IDE ou pelo Compose):
+Com os serviços rodando (pela IDE ou pelo Compose):
 
-| Recurso | Endereço |
-|---|---|
-| Swagger UI (documentação interativa) | http://localhost:8081/swagger-ui.html |
-| Especificação OpenAPI (JSON) | http://localhost:8081/v3/api-docs |
+| Recurso | MS1 - Usuários | MS2 - Transações |
+|---|---|---|
+| Swagger UI (documentação interativa) | http://localhost:8081/swagger-ui.html | http://localhost:8082/swagger-ui.html |
+| Especificação OpenAPI (JSON) | http://localhost:8081/v3/api-docs | http://localhost:8082/v3/api-docs |
 
 Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação de CSV (botão **Try it out**). Há arquivos de exemplo em `samples/`.
+
+### Transações (MS2)
+
+| Método e rota | O que faz |
+|---|---|
+| `POST /transacoes` | Registra depósito, retirada, transferência ou compra e responde 201 com o status (`APROVADA` ou `REJEITADA`, com o motivo) |
+| `GET /transacoes/{id}` | Consulta uma transação |
+| `GET /transacoes?usuarioId=1&inicio=2026-11-01&fim=2026-11-30&tipo=COMPRA` | Lista as transações do usuário; período e tipo são opcionais |
+
+Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, transferência e compra) exigem categoria; transferência exige `usuarioDestinoId`; saídas são conferidas contra saldo, limite por transação e limite diário (dia no fuso de São Paulo); depósito é sempre aprovado.
+
+> Até a integração com a API Mock (pedido 2), o saldo e os limites vêm de `conta.padrao` no `application.yml` do MS2.
 
 ## Tecnologias
 
