@@ -106,6 +106,17 @@ Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, tr
 | **Concorrência** | Duas saídas ao mesmo tempo do mesmo usuário leem o mesmo saldo; a segunda sobrescreve a primeira no `PUT` (atualização perdida) e as duas podem passar no limite diário | Nada no código: documentado | Trava por conta (ex.: `SELECT ... FOR UPDATE` num registro do usuário), versão otimista na conta (`If-Match`/versão) ou o saldo como soma das transações no próprio banco |
 | **Mock e banco sem transação única** | O `PUT` na Mock acontece antes de gravar; se a gravação falhar, o saldo já mudou sem registro | Log de erro com a conta e o saldo (anterior → novo) e tentativa de voltar o saldo anterior; se não der, log `AJUSTE MANUAL` | Padrão *outbox*/saga: gravar a transação como pendente, atualizar o saldo e confirmar, com reprocessamento |
 
+### Câmbio (BrasilAPI)
+
+Cada transação mostra o valor em real e em **USD** e **EUR** (`conversoes`), com a taxa e a data da cotação. A cotação é buscada **no registro** e guardada na transação, então a consulta mostra sempre o câmbio do dia em que ela foi feita.
+
+| Regra | Por quê |
+|---|---|
+| Endpoint `GET https://brasilapi.com.br/api/cambio/v1/cotacao/{moeda}/{data}` | Cotação oficial do Banco Central por moeda e data |
+| Taxa = boletim `FECHAMENTO PTAX`, valor de **venda** | Referência oficial do dia |
+| Transação de hoje (ou data futura) consulta o **dia anterior** | A API responde 400 `NO_TODAY_DATE` para o dia atual |
+| A data guardada é a que vem na resposta | Em fim de semana ou feriado, a API devolve o último dia útil (ex.: domingo → sexta) |
+
 ### API Mock fora do ar
 
 Sem saldo confirmado, o MS2 nunca aprova às cegas (tempo limite de 2 s em cada chamada):
