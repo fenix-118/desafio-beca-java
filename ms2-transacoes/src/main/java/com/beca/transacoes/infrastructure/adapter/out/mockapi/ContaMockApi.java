@@ -6,6 +6,6 @@ import java.math.BigDecimal;
 
 /** Uma linha do recurso "contas" da API Mock, como ela vem no JSON. */
 @JsonIgnoreProperties(ignoreUnknown = true)
-record ContaMockApi(String id, Long usuarioId, BigDecimal saldo,
+public record ContaMockApi(String id, Long usuarioId, BigDecimal saldo,
                     BigDecimal limitePorTransacao, BigDecimal limiteDiario) {
 }

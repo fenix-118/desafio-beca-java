@@ -5,10 +5,12 @@ import com.beca.transacoes.application.port.out.ServicoSaldoIndisponivelExceptio
 import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.model.SituacaoConta;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.MediaType;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +20,9 @@ import java.util.Optional;
  * O filtro ?usuarioId= da Mock procura por "contém" (usuarioId=3 também traz o 13), por isso o
  * usuarioId exato é conferido aqui. Quando nada combina, a Mock responde 404 "Not found": isso é
  * "usuário sem conta", não falha. Qualquer outro erro vira ServicoSaldoIndisponivelException.
+ *
+ * Para atualizar o saldo, busca a conta de novo (para pegar o id dela na Mock) e faz PUT /contas/{id}
+ * com a linha inteira, trocando só o saldo.
  */
 public class MockApiContaAdapter implements ContaPort {
 
@@ -34,6 +39,24 @@ public class MockApiContaAdapter implements ContaPort {
     @Override
     public Optional<SituacaoConta> consultar(Long usuarioId) {
         return buscar(usuarioId).map(MockApiContaAdapter::paraSituacao);
+    }
+
+    @Override
+    public void atualizarSaldo(Long usuarioId, BigDecimal novoSaldo) {
+        ContaMockApi atual = buscar(usuarioId).orElseThrow(() -> new ServicoSaldoIndisponivelException(
+                "A conta do usuário não foi encontrada na API Mock ao atualizar o saldo.", null));
+        ContaMockApi atualizada = new ContaMockApi(atual.id(), atual.usuarioId(), novoSaldo,
+                atual.limitePorTransacao(), atual.limiteDiario());
+        try {
+            mockApi.put()
+                    .uri("/contas/{id}", atual.id())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(atualizada)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            throw new ServicoSaldoIndisponivelException("API Mock indisponível ao atualizar o saldo.", e);
+        }
     }
 
     Optional<ContaMockApi> buscar(Long usuarioId) {

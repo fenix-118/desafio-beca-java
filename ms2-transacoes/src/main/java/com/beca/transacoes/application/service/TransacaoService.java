@@ -60,10 +60,8 @@ public class TransacaoService
         if (problemaNoDestino.isPresent()) {
             // O dono já foi confirmado: a tentativa fica registrada, rejeitada com o motivo.
             transacao.rejeitar(problemaNoDestino.get());
-        } else if (transacao.precisaDeSaldo()) {
-            avaliarSaida(transacao);
         } else {
-            transacao.avaliar(null, null);
+            avaliarComAConta(transacao);
         }
         return repositorio.salvar(transacao);
     }
@@ -108,26 +106,48 @@ public class TransacaoService
         }
     }
 
-    private void avaliarSaida(Transacao transacao) {
-        Optional<SituacaoConta> situacao;
+    /**
+     * Consulta a conta, aplica as regras e, se passar, grava o novo saldo na Mock ANTES de aprovar.
+     * Assim uma transação só fica APROVADA quando o saldo foi de fato atualizado (ponto 2 da revisão).
+     */
+    private void avaliarComAConta(Transacao transacao) {
+        Long usuarioId = transacao.getUsuarioId();
+
+        Optional<SituacaoConta> encontrada;
         try {
-            situacao = conta.consultar(transacao.getUsuarioId());
+            encontrada = conta.consultar(usuarioId);
         } catch (ServicoSaldoIndisponivelException e) {
             // Dúvida 2: sem saldo confirmado, nunca aprova às cegas. A rejeição é gravada com o motivo.
             transacao.rejeitar(MotivoRejeicao.SERVICO_SALDO_INDISPONIVEL);
             return;
         }
-        if (situacao.isEmpty()) {
+        if (encontrada.isEmpty()) {
             transacao.rejeitar(MotivoRejeicao.CONTA_INEXISTENTE);
             return;
         }
+        SituacaoConta situacao = encontrada.get();
 
+        BigDecimal jaGastoHoje = transacao.precisaDeSaldo() ? saidasAprovadasHoje(usuarioId) : BigDecimal.ZERO;
+
+        Optional<MotivoRejeicao> motivo = transacao.verificarRegras(situacao, jaGastoHoje);
+        if (motivo.isPresent()) {
+            transacao.rejeitar(motivo.get());
+            return;
+        }
+
+        try {
+            conta.atualizarSaldo(usuarioId, transacao.saldoApos(situacao));
+        } catch (ServicoSaldoIndisponivelException e) {
+            transacao.rejeitar(MotivoRejeicao.SERVICO_SALDO_INDISPONIVEL);
+            return;
+        }
+        transacao.avaliar(situacao, jaGastoHoje);
+    }
+
+    private BigDecimal saidasAprovadasHoje(Long usuarioId) {
         LocalDate hoje = LocalDate.now(relogio.withZone(FUSO));
         Instant inicioDoDia = hoje.atStartOfDay(FUSO).toInstant();
         Instant inicioDeAmanha = hoje.plusDays(1).atStartOfDay(FUSO).toInstant();
-        BigDecimal jaGastoHoje = repositorio.somarSaidasAprovadas(
-                transacao.getUsuarioId(), inicioDoDia, inicioDeAmanha);
-
-        transacao.avaliar(situacao.get(), jaGastoHoje);
+        return repositorio.somarSaidasAprovadas(usuarioId, inicioDoDia, inicioDeAmanha);
     }
 }

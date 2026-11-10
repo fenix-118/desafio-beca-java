@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -36,6 +37,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -92,16 +97,62 @@ class TransacaoServiceTest {
     }
 
     @Test
-    void depositoEAprovadoSemConsultarAConta() {
+    void depositoSomaAoSaldoNaMockEEAprovadoSemOlharOLimiteDiario() {
         usuariosExistem(1L);
         salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
 
         Transacao t = service.registrar(new RegistrarTransacaoCommand(
                 1L, TipoTransacao.DEPOSITO, new BigDecimal("250"), null, null, "Salário"));
 
         assertThat(gravada().getStatus()).isEqualTo(StatusTransacao.APROVADA);
         assertThat(t.getValor()).isEqualByComparingTo("250.00");
-        verifyNoInteractions(conta);
+        verify(conta).atualizarSaldo(eq(1L), argThat(saldo -> saldo.compareTo(new BigDecimal("1250.00")) == 0));
+        verify(repositorio, never()).somarSaidasAprovadas(anyLong(), any(), any());
+    }
+
+    @Test
+    void saidaAprovadaDebitaOSaldoNaMockAntesDeGravar() {
+        usuariosExistem(1L);
+        salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
+        when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
+
+        Transacao t = service.registrar(saida(TipoTransacao.COMPRA, "120.00"));
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.APROVADA);
+        InOrder ordem = inOrder(conta, repositorio);
+        ordem.verify(conta).atualizarSaldo(eq(1L), argThat(saldo -> saldo.compareTo(new BigDecimal("880.00")) == 0));
+        ordem.verify(repositorio).salvar(t);
+    }
+
+    @Test
+    void falhaAoAtualizarOSaldoRejeitaEmVezDeAprovar() {
+        usuariosExistem(1L);
+        salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
+        when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
+        doThrow(new ServicoSaldoIndisponivelException("timeout no PUT", null))
+                .when(conta).atualizarSaldo(eq(1L), any());
+
+        Transacao t = service.registrar(saida(TipoTransacao.COMPRA, "120.00"));
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.REJEITADA);
+        assertThat(t.getMotivoRejeicao()).isEqualTo(MotivoRejeicao.SERVICO_SALDO_INDISPONIVEL);
+        assertThat(gravada()).isSameAs(t);
+    }
+
+    @Test
+    void depositoSemContaNaMockERejeitado() {
+        usuariosExistem(1L);
+        salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenReturn(Optional.empty());
+
+        Transacao t = service.registrar(new RegistrarTransacaoCommand(
+                1L, TipoTransacao.DEPOSITO, BigDecimal.TEN, null, null, null));
+
+        assertThat(t.getMotivoRejeicao()).isEqualTo(MotivoRejeicao.CONTA_INEXISTENTE);
+        verify(conta, never()).atualizarSaldo(anyLong(), any());
     }
 
     @Test
@@ -116,6 +167,7 @@ class TransacaoServiceTest {
         assertThat(t.getStatus()).isEqualTo(StatusTransacao.REJEITADA);
         assertThat(t.getMotivoRejeicao()).isEqualTo(MotivoRejeicao.SALDO_INSUFICIENTE);
         assertThat(gravada()).isSameAs(t);
+        verify(conta, never()).atualizarSaldo(anyLong(), any());
     }
 
     @Test

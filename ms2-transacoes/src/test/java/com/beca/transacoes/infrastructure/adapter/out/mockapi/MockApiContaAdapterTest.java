@@ -11,10 +11,12 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
@@ -110,5 +112,43 @@ class MockApiContaAdapterTest {
                         """, MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(() -> adapter.consultar(3L)).isInstanceOf(ServicoSaldoIndisponivelException.class);
+    }
+
+    // ---------- atualizar saldo (BJ-11) ----------
+
+    @Test
+    void atualizarSaldoFazPutNaContaCertaTrocandoSoOSaldo() {
+        mock.expect(requestTo(MOCK + "/contas?usuarioId=3"))
+                .andRespond(withSuccess(CONTAS_DO_3_E_DO_13, MediaType.APPLICATION_JSON));
+        mock.expect(requestTo(MOCK + "/contas/2"))
+                .andExpect(method(HttpMethod.PUT))
+                .andExpect(jsonPath("$.usuarioId").value(3))
+                .andExpect(jsonPath("$.saldo").value(880.0))
+                .andExpect(jsonPath("$.limitePorTransacao").value(500.0))
+                .andExpect(jsonPath("$.limiteDiario").value(800.0))
+                .andRespond(withSuccess());
+
+        adapter.atualizarSaldo(3L, new BigDecimal("880.00"));
+        mock.verify();
+    }
+
+    @Test
+    void putComAMockForaDoArViraServicoIndisponivel() {
+        mock.expect(requestTo(MOCK + "/contas?usuarioId=3"))
+                .andRespond(withSuccess(CONTAS_DO_3_E_DO_13, MediaType.APPLICATION_JSON));
+        mock.expect(requestTo(MOCK + "/contas/2"))
+                .andRespond(withException(new IOException("Read timed out")));
+
+        assertThatThrownBy(() -> adapter.atualizarSaldo(3L, BigDecimal.TEN))
+                .isInstanceOf(ServicoSaldoIndisponivelException.class);
+    }
+
+    @Test
+    void atualizarSaldoDeContaQueSumiuViraServicoIndisponivel() {
+        mock.expect(requestTo(MOCK + "/contas?usuarioId=9"))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        assertThatThrownBy(() -> adapter.atualizarSaldo(9L, BigDecimal.TEN))
+                .isInstanceOf(ServicoSaldoIndisponivelException.class);
     }
 }

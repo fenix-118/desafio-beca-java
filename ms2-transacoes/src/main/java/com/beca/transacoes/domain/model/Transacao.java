@@ -6,6 +6,7 @@ import com.beca.transacoes.domain.exception.TransicaoDeStatusInvalidaException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Transação financeira em BRL (moeda base, dúvida 10).
@@ -70,33 +71,44 @@ public class Transacao {
     }
 
     /**
-     * Aplica as regras de aprovação. Depósito é sempre aprovado e não conta no limite diário (dúvida 9),
-     * por isso não precisa da conta. Saídas são conferidas nesta ordem: saldo, limite por transação
-     * e limite diário.
+     * Diz, sem mudar nada, se a transação passaria nas regras. Depósito sempre passa e não conta no
+     * limite diário (dúvida 9). Saídas são conferidas nesta ordem: saldo, limite por transação e limite diário.
      *
      * @param conta            saldo e limites atuais da conta (obrigatório em saídas)
      * @param totalSaidasNoDia soma das saídas já APROVADAS no dia (fuso America/Sao_Paulo)
+     * @return o motivo da rejeição, ou vazio se a transação pode ser aprovada
      */
-    public void avaliar(SituacaoConta conta, BigDecimal totalSaidasNoDia) {
-        exigirPendente();
-
+    public Optional<MotivoRejeicao> verificarRegras(SituacaoConta conta, BigDecimal totalSaidasNoDia) {
         if (!tipo.isSaida()) {
-            this.status = StatusTransacao.APROVADA;
-            return;
+            return Optional.empty();
         }
         Objects.requireNonNull(conta, "A situação da conta é obrigatória para avaliar uma saída.");
 
         BigDecimal jaGastoHoje = totalSaidasNoDia == null ? BigDecimal.ZERO : totalSaidasNoDia;
 
         if (valor.compareTo(conta.saldo()) > 0) {
-            marcarRejeitada(MotivoRejeicao.SALDO_INSUFICIENTE);
-        } else if (valor.compareTo(conta.limitePorTransacao()) > 0) {
-            marcarRejeitada(MotivoRejeicao.LIMITE_POR_TRANSACAO_EXCEDIDO);
-        } else if (jaGastoHoje.add(valor).compareTo(conta.limiteDiario()) > 0) {
-            marcarRejeitada(MotivoRejeicao.LIMITE_DIARIO_EXCEDIDO);
-        } else {
-            this.status = StatusTransacao.APROVADA;
+            return Optional.of(MotivoRejeicao.SALDO_INSUFICIENTE);
         }
+        if (valor.compareTo(conta.limitePorTransacao()) > 0) {
+            return Optional.of(MotivoRejeicao.LIMITE_POR_TRANSACAO_EXCEDIDO);
+        }
+        if (jaGastoHoje.add(valor).compareTo(conta.limiteDiario()) > 0) {
+            return Optional.of(MotivoRejeicao.LIMITE_DIARIO_EXCEDIDO);
+        }
+        return Optional.empty();
+    }
+
+    /** Aplica as regras e decide: APROVADA ou REJEITADA com o motivo. Só pode ser chamado uma vez. */
+    public void avaliar(SituacaoConta conta, BigDecimal totalSaidasNoDia) {
+        exigirPendente();
+        verificarRegras(conta, totalSaidasNoDia)
+                .ifPresentOrElse(this::marcarRejeitada, () -> this.status = StatusTransacao.APROVADA);
+    }
+
+    /** Saldo da conta depois desta transação: depósito soma, saída subtrai. */
+    public BigDecimal saldoApos(SituacaoConta conta) {
+        Objects.requireNonNull(conta, "A situação da conta é obrigatória para calcular o saldo.");
+        return tipo.isSaida() ? conta.saldo().subtract(valor) : conta.saldo().add(valor);
     }
 
     /** Rejeita sem avaliar saldo: API Mock fora do ar (dúvida 2) ou destino inexistente (dúvida 8). */

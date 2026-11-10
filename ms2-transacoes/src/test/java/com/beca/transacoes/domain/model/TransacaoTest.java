@@ -271,6 +271,35 @@ class TransacaoTest {
         }
     }
 
+    @Nested
+    class VerificarRegrasESaldo {
+
+        @Test
+        void verificarNaoMudaOStatus() {
+            Transacao t = compra("600.00");
+
+            assertThat(t.verificarRegras(CONTA, BigDecimal.ZERO))
+                    .contains(MotivoRejeicao.LIMITE_POR_TRANSACAO_EXCEDIDO);
+            assertThat(t.getStatus()).isEqualTo(StatusTransacao.PENDENTE);
+        }
+
+        @Test
+        void verificarSaidaDentroDasRegrasDevolveVazio() {
+            assertThat(compra("100.00").verificarRegras(CONTA, BigDecimal.ZERO)).isEmpty();
+        }
+
+        @Test
+        void depositoSemprePassaNasRegras() {
+            assertThat(deposito("99999.99").verificarRegras(null, null)).isEmpty();
+        }
+
+        @Test
+        void saldoAposSaidaSubtraiEAposDepositoSoma() {
+            assertThat(compra("120.50").saldoApos(CONTA)).isEqualByComparingTo("879.50");
+            assertThat(deposito("0.75").saldoApos(CONTA)).isEqualByComparingTo("1000.75");
+        }
+    }
+
     @Test
     void situacaoContaRecusaValoresNegativosOuNulos() {
         assertThatThrownBy(() -> new SituacaoConta(new BigDecimal("-1"), BigDecimal.ONE, BigDecimal.ONE))
