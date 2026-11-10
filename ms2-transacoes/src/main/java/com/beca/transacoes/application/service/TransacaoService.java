@@ -32,6 +32,9 @@ public class TransacaoService
     /** O "dia" do limite diário segue o dia do usuário (dúvida 11 do refinamento). */
     static final ZoneId FUSO = DiaSaoPaulo.FUSO;
 
+    /** Logger do próprio Java: a camada de aplicação continua sem dependência de framework. */
+    private static final System.Logger LOG = System.getLogger(TransacaoService.class.getName());
+
     private final TransacaoRepositoryPort repositorio;
     private final ContaPort conta;
     private final UsuarioPort usuarios;
@@ -117,7 +120,7 @@ public class TransacaoService
             encontrada = conta.consultar(usuarioId);
         } catch (ServicoSaldoIndisponivelException e) {
             // Dúvida 2: sem saldo confirmado, nunca aprova às cegas. A rejeição é gravada com o motivo.
-            transacao.rejeitar(MotivoRejeicao.SERVICO_SALDO_INDISPONIVEL);
+            rejeitarPorMockIndisponivel(transacao, "consultar a conta", e);
             return;
         }
         if (encontrada.isEmpty()) {
@@ -137,10 +140,27 @@ public class TransacaoService
         try {
             conta.atualizarSaldo(usuarioId, transacao.saldoApos(situacao));
         } catch (ServicoSaldoIndisponivelException e) {
-            transacao.rejeitar(MotivoRejeicao.SERVICO_SALDO_INDISPONIVEL);
+            rejeitarPorMockIndisponivel(transacao, "atualizar o saldo", e);
             return;
         }
         transacao.avaliar(situacao, jaGastoHoje);
+    }
+
+    private static void rejeitarPorMockIndisponivel(Transacao transacao, String etapa,
+                                                    ServicoSaldoIndisponivelException e) {
+        // Só a etapa e o tipo do erro: nada de valores nem dados pessoais no log.
+        LOG.log(System.Logger.Level.WARNING, "API Mock indisponível ao {0}; transação {1} rejeitada ({2})",
+                etapa, transacao.getTipo(), causaRaiz(e));
+        transacao.rejeitar(MotivoRejeicao.SERVICO_SALDO_INDISPONIVEL);
+    }
+
+    /** Tipo do erro mais interno (ex.: SSLHandshakeException, UnknownHostException), para o diagnóstico. */
+    private static String causaRaiz(Throwable e) {
+        Throwable raiz = e;
+        while (raiz.getCause() != null && raiz.getCause() != raiz) {
+            raiz = raiz.getCause();
+        }
+        return raiz.getClass().getSimpleName();
     }
 
     private BigDecimal saidasAprovadasHoje(Long usuarioId) {

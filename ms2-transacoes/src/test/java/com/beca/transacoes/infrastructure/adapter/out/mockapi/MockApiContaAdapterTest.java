@@ -11,6 +11,7 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.math.BigDecimal;
 import java.util.Optional;
 
@@ -100,6 +101,21 @@ class MockApiContaAdapterTest {
     void mockForaDoArViraServicoIndisponivel() {
         mock.expect(requestTo(MOCK + "/contas?usuarioId=3"))
                 .andRespond(withException(new IOException("Connection refused")));
+
+        assertThatThrownBy(() -> adapter.consultar(3L)).isInstanceOf(ServicoSaldoIndisponivelException.class);
+    }
+
+    @Test
+    void tempoLimiteEsgotadoViraServicoIndisponivel() {
+        mock.expect(requestTo(MOCK + "/contas?usuarioId=3"))
+                .andRespond(withException(new SocketTimeoutException("Read timed out")));
+
+        assertThatThrownBy(() -> adapter.consultar(3L)).isInstanceOf(ServicoSaldoIndisponivelException.class);
+    }
+
+    @Test
+    void erro4xxDiferenteDe404TambemViraServicoIndisponivel() {
+        mock.expect(requestTo(MOCK + "/contas?usuarioId=3")).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
 
         assertThatThrownBy(() -> adapter.consultar(3L)).isInstanceOf(ServicoSaldoIndisponivelException.class);
     }

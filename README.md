@@ -86,6 +86,17 @@ Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, tr
 >
 > Quem atualiza o saldo é o MS2: depois de passar nas regras, ele grava o novo saldo na Mock (`PUT /contas/{id}`) e só então aprova. Depósito soma, saída subtrai. Se o `PUT` falhar, a transação fica `REJEITADA` com `SERVICO_SALDO_INDISPONIVEL`.
 
+#### API Mock fora do ar
+
+Sem saldo confirmado, o MS2 nunca aprova às cegas (tempo limite de 2 s em cada chamada):
+
+| Onde | Resposta |
+|---|---|
+| `POST /transacoes` (qualquer tipo) | 201, `REJEITADA` com `SERVICO_SALDO_INDISPONIVEL`; a transação fica gravada e a descrição explica o motivo |
+| `GET /contas/{usuarioId}/saldo` | 503, "Serviço de saldo indisponível; tente novamente em instantes." |
+
+Para testar: troque `MOCKAPI_BASE_URL` no `.env` por um endereço inexistente (ex.: `https://invalido.mockapi.io/api/v1`), reinicie o MS2 e faça uma compra. Depois volte a URL certa.
+
 > O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar. Pela IDE, suba o MS1 antes (endereço em `MS1_BASE_URL`, padrão `http://localhost:8081`); no Compose, o MS2 só sobe depois que o healthcheck do MS1 responde `UP`.
 
 | Situação no MS1 | Resposta do MS2 | Grava? |

@@ -51,7 +51,7 @@ public class ApiExceptionHandler {
     /** MS1 fora do ar: nada é gravado e o cliente pode tentar de novo. O detalhe técnico fica só no log. */
     @ExceptionHandler(ServicoUsuariosIndisponivelException.class)
     public ProblemDetail usuariosIndisponivel(ServicoUsuariosIndisponivelException ex) {
-        log.warn("MS1 indisponível: {}", ex.getCause() == null ? ex.getMessage() : ex.getCause().getClass().getSimpleName());
+        log.warn("MS1 indisponível: {}", causaRaiz(ex));
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, USUARIOS_INDISPONIVEL);
     }
 
@@ -69,7 +69,7 @@ public class ApiExceptionHandler {
     /** Só chega aqui na consulta de saldo: no registro, a Mock fora do ar vira transação REJEITADA com motivo. */
     @ExceptionHandler(ServicoSaldoIndisponivelException.class)
     public ProblemDetail saldoIndisponivel(ServicoSaldoIndisponivelException ex) {
-        log.warn("API Mock indisponível: {}", ex.getCause() == null ? ex.getMessage() : ex.getCause().getClass().getSimpleName());
+        log.warn("API Mock indisponível: {}", causaRaiz(ex));
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, SALDO_INDISPONIVEL);
     }
 
@@ -105,5 +105,14 @@ public class ApiExceptionHandler {
         ProblemDetail problema = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Dados inválidos.");
         problema.setProperty("campos", campos);
         return problema;
+    }
+
+    /** Tipo do erro mais interno (ex.: SSLHandshakeException, ConnectException), sem URL nem dados. */
+    static String causaRaiz(Throwable e) {
+        Throwable raiz = e;
+        while (raiz.getCause() != null && raiz.getCause() != raiz) {
+            raiz = raiz.getCause();
+        }
+        return raiz.getClass().getSimpleName();
     }
 }

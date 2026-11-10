@@ -143,6 +143,21 @@ class TransacaoServiceTest {
     }
 
     @Test
+    void depositoComAMockForaDoArTambemERejeitadoEGravado() {
+        usuariosExistem(1L);
+        salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenThrow(new ServicoSaldoIndisponivelException("Connection refused", null));
+
+        Transacao t = service.registrar(new RegistrarTransacaoCommand(
+                1L, TipoTransacao.DEPOSITO, BigDecimal.TEN, null, null, null));
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.REJEITADA);
+        assertThat(t.getMotivoRejeicao()).isEqualTo(MotivoRejeicao.SERVICO_SALDO_INDISPONIVEL);
+        assertThat(t.getMotivoRejeicao().getDescricao()).contains("indisponível");
+        assertThat(gravada()).isSameAs(t);
+    }
+
+    @Test
     void depositoSemContaNaMockERejeitado() {
         usuariosExistem(1L);
         salvarDevolveOMesmo();
