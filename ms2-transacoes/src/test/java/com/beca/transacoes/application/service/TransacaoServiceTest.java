@@ -369,6 +369,23 @@ class TransacaoServiceTest {
         assertThat(gravada()).isSameAs(t);
     }
 
+    @Test
+    void falhaInesperadaNoCambioNaoImpedeORegistro() {
+        usuariosExistem(1L);
+        salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
+        when(cambio.cotacao(eq(MoedaEstrangeira.USD), any())).thenThrow(new IllegalStateException("bug no adaptador"));
+        Cotacao euro = new Cotacao(MoedaEstrangeira.EUR, new BigDecimal("6.1317"), java.time.LocalDate.of(2026, 11, 6));
+        when(cambio.cotacao(eq(MoedaEstrangeira.EUR), any())).thenReturn(Optional.of(euro));
+
+        Transacao t = service.registrar(new RegistrarTransacaoCommand(
+                1L, TipoTransacao.DEPOSITO, BigDecimal.TEN, null, null, null));
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.APROVADA);
+        assertThat(t.getCotacoes()).containsExactly(euro);
+        assertThat(gravada()).isSameAs(t);
+    }
+
     // ---------- validação do usuário no MS1 ----------
 
     @Test

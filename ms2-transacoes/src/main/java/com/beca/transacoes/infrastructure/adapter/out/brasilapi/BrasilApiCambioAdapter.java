@@ -73,7 +73,14 @@ public class BrasilApiCambioAdapter implements CambioPort {
                     moeda, data, causaRaiz(e));
             return Optional.empty();
         }
-        return paraCotacao(moeda, resposta);
+        try {
+            return paraCotacao(moeda, resposta);
+        } catch (RuntimeException e) {
+            // Resposta num formato inesperado: o câmbio é informativo e não pode quebrar a transação.
+            log.warn("BrasilAPI respondeu num formato inesperado para {}: conversão indisponível ({})",
+                    moeda, causaRaiz(e));
+            return Optional.empty();
+        }
     }
 
     private static Optional<Cotacao> paraCotacao(MoedaEstrangeira moeda, RespostaCotacaoBrasilApi resposta) {

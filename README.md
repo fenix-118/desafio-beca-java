@@ -31,6 +31,7 @@ Depois, preencha os valores no `.env`:
 | `POSTGRES_PASSWORD` | Sim | Senha do PostgreSQL |
 | `MOCKAPI_BASE_URL` | Sim, para o MS2 | URL base da API Mock (recurso `contas`); sem ela o MS2 não sobe |
 | `MS1_BASE_URL` | Não | Endereço do MS1 usado pelo MS2 (padrão `http://localhost:8081`) |
+| `BRASILAPI_BASE_URL` | Não | URL base da BrasilAPI, usada no câmbio (padrão `https://brasilapi.com.br/api`) |
 
 ### 2. Subir o banco
 
@@ -116,6 +117,8 @@ Cada transação mostra o valor em real e em **USD** e **EUR** (`conversoes`), c
 | Taxa = boletim `FECHAMENTO PTAX`, valor de **venda** | Referência oficial do dia |
 | Transação de hoje (ou data futura) consulta o **dia anterior** | A API responde 400 `NO_TODAY_DATE` para o dia atual |
 | A data guardada é a que vem na resposta | Em fim de semana ou feriado, a API devolve o último dia útil (ex.: domingo → sexta) |
+
+**BrasilAPI fora do ar** (ou qualquer falha: tempo limite de 2 s, erro 4xx/5xx, resposta inesperada): o câmbio é informativo e nunca quebra a transação. Ela é registrada normalmente, e a consulta responde com a moeda marcada como `"disponivel": false`. A consulta nunca chama a BrasilAPI (lê o que foi guardado no registro), então ela não cai por causa da API. Para testar, aponte `BRASILAPI_BASE_URL` no `.env` para um endereço inexistente (ex.: `https://invalido.brasilapi.com.br/api`) e reinicie o MS2.
 
 ### API Mock fora do ar
 

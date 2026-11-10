@@ -142,7 +142,13 @@ public class TransacaoService
     private void anexarCambio(Transacao transacao) {
         LocalDate diaDaTransacao = LocalDate.ofInstant(transacao.getCriadaEm(), FUSO);
         for (MoedaEstrangeira moeda : MoedaEstrangeira.values()) {
-            cambio.cotacao(moeda, diaDaTransacao).ifPresent(transacao::anexarCotacao);
+            try {
+                cambio.cotacao(moeda, diaDaTransacao).ifPresent(transacao::anexarCotacao);
+            } catch (RuntimeException e) {
+                // Proteção extra (dúvida 3): nenhuma falha de câmbio impede o registro da transação.
+                LOG.log(System.Logger.Level.WARNING, "Câmbio de {0} indisponível; transação registrada sem conversão ({1})",
+                        moeda, causaRaiz(e));
+            }
         }
     }
 

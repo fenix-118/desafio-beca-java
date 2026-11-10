@@ -155,4 +155,23 @@ class BrasilApiCambioAdapterTest {
         assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isPresent();
         api.verify();
     }
+
+    @Test
+    void respostaNumFormatoInesperadoViraConversaoIndisponivel() {
+        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withSuccess("<html>manutenção</html>", MediaType.TEXT_HTML));
+        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+
+        api.reset();
+        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withSuccess("{\"cotacoes\":[],\"moeda\":\"USD\",\"data\":\"2026-11-09\"}",
+                        MediaType.APPLICATION_JSON));
+        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+
+        api.reset();
+        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withSuccess("{\"cotacoes\":[{\"cotacao_venda\":0,\"tipo_boletim\":\"FECHAMENTO PTAX\"}],"
+                        + "\"moeda\":\"USD\",\"data\":\"2026-11-09\"}", MediaType.APPLICATION_JSON));
+        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+    }
 }

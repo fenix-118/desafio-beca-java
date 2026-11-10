@@ -126,4 +126,20 @@ class TransacaoControllerTest {
                 .andExpect(jsonPath("$.conversoes[1].valor").value(19.57))
                 .andExpect(jsonPath("$.conversoes[1].dataCotacao").value("2026-11-06"));
     }
+
+    @Test
+    void semCotacaoAConsultaRespondeComAConversaoIndisponivel() throws Exception {
+        Transacao semCambio = Transacao.reconstituir(21L, 3L, TipoTransacao.COMPRA, new BigDecimal("10.00"),
+                Categoria.ALIMENTACAO, null, null, Instant.parse("2026-11-10T18:33:22Z"),
+                StatusTransacao.APROVADA, null);
+        when(buscar.buscarPorId(21L)).thenReturn(semCambio);
+
+        mvc.perform(get("/transacoes/21"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APROVADA"))
+                .andExpect(jsonPath("$.conversoes[0].moeda").value("USD"))
+                .andExpect(jsonPath("$.conversoes[0].disponivel").value(false))
+                .andExpect(jsonPath("$.conversoes[0].valor").doesNotExist())
+                .andExpect(jsonPath("$.conversoes[1].disponivel").value(false));
+    }
 }
