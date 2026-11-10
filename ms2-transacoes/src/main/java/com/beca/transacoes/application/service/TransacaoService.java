@@ -20,7 +20,6 @@ import com.beca.transacoes.domain.model.Transacao;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.List;
@@ -31,7 +30,7 @@ public class TransacaoService
         implements RegistrarTransacaoUseCase, BuscarTransacaoUseCase, ListarTransacoesUseCase {
 
     /** O "dia" do limite diário segue o dia do usuário (dúvida 11 do refinamento). */
-    static final ZoneId FUSO = ZoneId.of("America/Sao_Paulo");
+    static final ZoneId FUSO = DiaSaoPaulo.FUSO;
 
     private final TransacaoRepositoryPort repositorio;
     private final ContaPort conta;
@@ -145,9 +144,7 @@ public class TransacaoService
     }
 
     private BigDecimal saidasAprovadasHoje(Long usuarioId) {
-        LocalDate hoje = LocalDate.now(relogio.withZone(FUSO));
-        Instant inicioDoDia = hoje.atStartOfDay(FUSO).toInstant();
-        Instant inicioDeAmanha = hoje.plusDays(1).atStartOfDay(FUSO).toInstant();
-        return repositorio.somarSaidasAprovadas(usuarioId, inicioDoDia, inicioDeAmanha);
+        DiaSaoPaulo hoje = DiaSaoPaulo.hoje(relogio);
+        return repositorio.somarSaidasAprovadas(usuarioId, hoje.inicio(), hoje.fim());
     }
 }

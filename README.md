@@ -78,6 +78,7 @@ Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação
 | `POST /transacoes` | Registra depósito, retirada, transferência ou compra e responde 201 com o status (`APROVADA` ou `REJEITADA`, com o motivo) |
 | `GET /transacoes/{id}` | Consulta uma transação |
 | `GET /transacoes?usuarioId=1&inicio=2026-11-01&fim=2026-11-30&tipo=COMPRA` | Lista as transações do usuário; período e tipo são opcionais |
+| `GET /contas/{usuarioId}/saldo` | Saldo e limites lidos da API Mock no momento, o gasto de hoje e quanto ainda pode sair |
 
 Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, transferência e compra) exigem categoria; transferência exige `usuarioDestinoId`; saídas são conferidas contra saldo, limite por transação e limite diário (dia no fuso de São Paulo); depósito é sempre aprovado.
 

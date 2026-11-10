@@ -1,7 +1,9 @@
 package com.beca.transacoes.infrastructure.adapter.in.web;
 
 import com.beca.transacoes.application.port.out.FalhaIntegracaoUsuariosException;
+import com.beca.transacoes.application.port.out.ServicoSaldoIndisponivelException;
 import com.beca.transacoes.application.port.out.ServicoUsuariosIndisponivelException;
+import com.beca.transacoes.domain.exception.ContaNaoEncontradaException;
 import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
 import com.beca.transacoes.domain.exception.UsuarioNaoEncontradoException;
@@ -30,6 +32,9 @@ public class ApiExceptionHandler {
     static final String FALHA_INTEGRACAO_USUARIOS =
             "Erro na integração com o serviço de usuários; a transação não foi registrada.";
 
+    static final String SALDO_INDISPONIVEL =
+            "Serviço de saldo indisponível; tente novamente em instantes.";
+
     static final String CORPO_ILEGIVEL =
             "Corpo da requisição inválido: confira o JSON e os valores aceitos em 'tipo' e 'categoria'.";
 
@@ -54,6 +59,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(FalhaIntegracaoUsuariosException.class)
     public ProblemDetail falhaIntegracaoUsuarios(FalhaIntegracaoUsuariosException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, FALHA_INTEGRACAO_USUARIOS);
+    }
+
+    @ExceptionHandler(ContaNaoEncontradaException.class)
+    public ProblemDetail contaNaoEncontrada(ContaNaoEncontradaException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    /** Só chega aqui na consulta de saldo: no registro, a Mock fora do ar vira transação REJEITADA com motivo. */
+    @ExceptionHandler(ServicoSaldoIndisponivelException.class)
+    public ProblemDetail saldoIndisponivel(ServicoSaldoIndisponivelException ex) {
+        log.warn("API Mock indisponível: {}", ex.getCause() == null ? ex.getMessage() : ex.getCause().getClass().getSimpleName());
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, SALDO_INDISPONIVEL);
     }
 
     @ExceptionHandler(DadosInvalidosException.class)
