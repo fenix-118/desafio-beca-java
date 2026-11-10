@@ -30,3 +30,8 @@ ms1:
 mockapi:
   base-url: ${MOCKAPI_BASE_URL:}
   timeout-ms: 2000
+
+# BrasilAPI (câmbio): API pública, sem chave; BRASILAPI_BASE_URL permite apontar para outro endereço.
+brasilapi:
+  base-url: ${BRASILAPI_BASE_URL:https://brasilapi.com.br/api}
+  timeout-ms: 2000
