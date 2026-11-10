@@ -59,13 +59,50 @@ public class TransacaoService
         }
 
         Optional<MotivoRejeicao> problemaNoDestino = conferirDestino(transacao);
+        Optional<SaldoAlterado> saldoAlterado = Optional.empty();
         if (problemaNoDestino.isPresent()) {
             // O dono já foi confirmado: a tentativa fica registrada, rejeitada com o motivo.
             transacao.rejeitar(problemaNoDestino.get());
         } else {
-            avaliarComAConta(transacao);
+            saldoAlterado = avaliarComAConta(transacao);
         }
-        return repositorio.salvar(transacao);
+        return gravar(transacao, saldoAlterado);
+    }
+
+    /** O que mudou na Mock antes de gravar, para poder desfazer se a gravação falhar. */
+    private record SaldoAlterado(Long usuarioId, BigDecimal anterior, BigDecimal novo) {
+    }
+
+    /**
+     * O PUT na Mock acontece antes de gravar no banco (só aprova com o saldo de fato atualizado).
+     * Se a gravação falhar depois disso, o saldo já mudou sem registro: registra um erro com a conta
+     * e tenta voltar o saldo anterior. Sem transação distribuída, é o melhor esforço possível.
+     */
+    private Transacao gravar(Transacao transacao, Optional<SaldoAlterado> saldoAlterado) {
+        try {
+            return repositorio.salvar(transacao);
+        } catch (RuntimeException falhaAoGravar) {
+            saldoAlterado.ifPresent(alteracao -> desfazerSaldo(alteracao, transacao, falhaAoGravar));
+            throw falhaAoGravar;
+        }
+    }
+
+    private void desfazerSaldo(SaldoAlterado alteracao, Transacao transacao, RuntimeException falhaAoGravar) {
+        LOG.log(System.Logger.Level.ERROR,
+                "Falha ao gravar a {0} do usuário {1} depois de atualizar o saldo na Mock ({2} -> {3}); "
+                        + "voltando o saldo anterior ({4})",
+                transacao.getTipo(), String.valueOf(alteracao.usuarioId()), alteracao.anterior().toPlainString(),
+                alteracao.novo().toPlainString(), causaRaiz(falhaAoGravar));
+        try {
+            conta.atualizarSaldo(alteracao.usuarioId(), alteracao.anterior());
+            LOG.log(System.Logger.Level.WARNING, "Saldo do usuário {0} voltou para {1}",
+                    String.valueOf(alteracao.usuarioId()), alteracao.anterior().toPlainString());
+        } catch (RuntimeException falhaAoDesfazer) {
+            LOG.log(System.Logger.Level.ERROR,
+                    "AJUSTE MANUAL: não foi possível voltar o saldo do usuário {0} para {1} ({2})",
+                    String.valueOf(alteracao.usuarioId()), alteracao.anterior().toPlainString(),
+                    causaRaiz(falhaAoDesfazer));
+        }
     }
 
     @Override
@@ -112,7 +149,7 @@ public class TransacaoService
      * Consulta a conta, aplica as regras e, se passar, grava o novo saldo na Mock ANTES de aprovar.
      * Assim uma transação só fica APROVADA quando o saldo foi de fato atualizado (ponto 2 da revisão).
      */
-    private void avaliarComAConta(Transacao transacao) {
+    private Optional<SaldoAlterado> avaliarComAConta(Transacao transacao) {
         Long usuarioId = transacao.getUsuarioId();
 
         Optional<SituacaoConta> encontrada;
@@ -121,11 +158,11 @@ public class TransacaoService
         } catch (ServicoSaldoIndisponivelException e) {
             // Dúvida 2: sem saldo confirmado, nunca aprova às cegas. A rejeição é gravada com o motivo.
             rejeitarPorMockIndisponivel(transacao, "consultar a conta", e);
-            return;
+            return Optional.empty();
         }
         if (encontrada.isEmpty()) {
             transacao.rejeitar(MotivoRejeicao.CONTA_INEXISTENTE);
-            return;
+            return Optional.empty();
         }
         SituacaoConta situacao = encontrada.get();
 
@@ -134,16 +171,18 @@ public class TransacaoService
         Optional<MotivoRejeicao> motivo = transacao.verificarRegras(situacao, jaGastoHoje);
         if (motivo.isPresent()) {
             transacao.rejeitar(motivo.get());
-            return;
+            return Optional.empty();
         }
 
+        BigDecimal novoSaldo = transacao.saldoApos(situacao);
         try {
-            conta.atualizarSaldo(usuarioId, transacao.saldoApos(situacao));
+            conta.atualizarSaldo(usuarioId, novoSaldo);
         } catch (ServicoSaldoIndisponivelException e) {
             rejeitarPorMockIndisponivel(transacao, "atualizar o saldo", e);
-            return;
+            return Optional.empty();
         }
         transacao.avaliar(situacao, jaGastoHoje);
+        return Optional.of(new SaldoAlterado(usuarioId, situacao.saldo(), novoSaldo));
     }
 
     private static void rejeitarPorMockIndisponivel(Transacao transacao, String etapa,

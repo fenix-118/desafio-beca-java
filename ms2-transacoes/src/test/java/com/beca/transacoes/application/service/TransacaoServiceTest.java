@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -140,6 +141,47 @@ class TransacaoServiceTest {
         assertThat(t.getStatus()).isEqualTo(StatusTransacao.REJEITADA);
         assertThat(t.getMotivoRejeicao()).isEqualTo(MotivoRejeicao.SERVICO_SALDO_INDISPONIVEL);
         assertThat(gravada()).isSameAs(t);
+    }
+
+    @Test
+    void falhaAoGravarDepoisDoPutVoltaOSaldoAnteriorEPropagaOErro() {
+        usuariosExistem(1L);
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
+        when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
+        when(repositorio.salvar(any())).thenThrow(new IllegalStateException("banco fora do ar"));
+
+        assertThatThrownBy(() -> service.registrar(saida(TipoTransacao.COMPRA, "120.00")))
+                .isInstanceOf(IllegalStateException.class);
+
+        InOrder ordem = inOrder(conta);
+        ordem.verify(conta).atualizarSaldo(eq(1L), argThat(s -> s.compareTo(new BigDecimal("880.00")) == 0));
+        ordem.verify(conta).atualizarSaldo(eq(1L), argThat(s -> s.compareTo(new BigDecimal("1000.00")) == 0));
+    }
+
+    @Test
+    void seNaoDerParaDesfazerOErroOriginalContinuaSendoPropagado() {
+        usuariosExistem(1L);
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
+        when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
+        when(repositorio.salvar(any())).thenThrow(new IllegalStateException("banco fora do ar"));
+        doNothing().doThrow(new ServicoSaldoIndisponivelException("Mock caiu", null))
+                .when(conta).atualizarSaldo(eq(1L), any());
+
+        assertThatThrownBy(() -> service.registrar(saida(TipoTransacao.COMPRA, "120.00")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("banco fora do ar");
+    }
+
+    @Test
+    void falhaAoGravarUmaRejeitadaNaoMexeNoSaldo() {
+        usuariosExistem(1L);
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
+        when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
+        when(repositorio.salvar(any())).thenThrow(new IllegalStateException("banco fora do ar"));
+
+        assertThatThrownBy(() -> service.registrar(saida(TipoTransacao.COMPRA, "600.00")))
+                .isInstanceOf(IllegalStateException.class);
+        verify(conta, never()).atualizarSaldo(anyLong(), any());
     }
 
     @Test
