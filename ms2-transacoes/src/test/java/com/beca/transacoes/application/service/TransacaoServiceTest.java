@@ -108,7 +108,7 @@ class TransacaoServiceTest {
     void retiradaAcimaDoSaldoERejeitadaComMotivoEFicaGravada() {
         usuariosExistem(1L);
         salvarDevolveOMesmo();
-        when(conta.consultar(1L)).thenReturn(CONTA);
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
         when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
 
         Transacao t = service.registrar(saida(TipoTransacao.RETIRADA, "1000.01"));
@@ -122,7 +122,7 @@ class TransacaoServiceTest {
     void osQuatroTiposPodemSerCriados() {
         usuariosExistem(1L, 2L);
         salvarDevolveOMesmo();
-        when(conta.consultar(1L)).thenReturn(CONTA);
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
         when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
 
         assertThat(service.registrar(saida(TipoTransacao.RETIRADA, "10")).getStatus())
@@ -140,7 +140,7 @@ class TransacaoServiceTest {
     void limiteDiarioUsaODiaDeSaoPauloENaoODiaUtc() {
         usuariosExistem(1L);
         salvarDevolveOMesmo();
-        when(conta.consultar(1L)).thenReturn(CONTA);
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
         when(repositorio.somarSaidasAprovadas(1L, INICIO_DO_DIA_SP, FIM_DO_DIA_SP))
                 .thenReturn(new BigDecimal("750.00"));
 
@@ -154,7 +154,7 @@ class TransacaoServiceTest {
     void compraAcimaDoLimitePorTransacaoERejeitada() {
         usuariosExistem(1L);
         salvarDevolveOMesmo();
-        when(conta.consultar(1L)).thenReturn(CONTA);
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
         when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
 
         Transacao t = service.registrar(saida(TipoTransacao.COMPRA, "500.01"));
@@ -201,6 +201,20 @@ class TransacaoServiceTest {
         assertThatThrownBy(() -> service.buscarPorId(42L))
                 .isInstanceOf(TransacaoNaoEncontradaException.class)
                 .hasMessageContaining("42");
+    }
+
+    @Test
+    void usuarioSemContaNaMockTemASaidaRejeitadaEGravada() {
+        usuariosExistem(1L);
+        salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenReturn(Optional.empty());
+
+        Transacao t = service.registrar(saida(TipoTransacao.COMPRA, "10.00"));
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.REJEITADA);
+        assertThat(t.getMotivoRejeicao()).isEqualTo(MotivoRejeicao.CONTA_INEXISTENTE);
+        assertThat(gravada()).isSameAs(t);
+        verify(repositorio, never()).somarSaidasAprovadas(anyLong(), any(), any());
     }
 
     // ---------- validação do usuário no MS1 ----------

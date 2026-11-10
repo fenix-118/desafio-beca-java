@@ -81,7 +81,7 @@ Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação
 
 Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, transferência e compra) exigem categoria; transferência exige `usuarioDestinoId`; saídas são conferidas contra saldo, limite por transação e limite diário (dia no fuso de São Paulo); depósito é sempre aprovado.
 
-> Até a integração com a API Mock (pedido 2), o saldo e os limites vêm de `conta.padrao` no `application.yml` do MS2.
+> O saldo e os limites vêm do recurso `contas` da API Mock (mockapi.io). Defina `MOCKAPI_BASE_URL` no `.env` (veja o `.env.example`); sem ela o MS2 não sobe. Usuário sem conta na Mock tem a saída `REJEITADA` com `CONTA_INEXISTENTE`.
 
 > O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar. Pela IDE, suba o MS1 antes (endereço em `MS1_BASE_URL`, padrão `http://localhost:8081`); no Compose, o MS2 só sobe depois que o healthcheck do MS1 responde `UP`.
 

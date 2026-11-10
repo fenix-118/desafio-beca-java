@@ -109,12 +109,16 @@ public class TransacaoService
     }
 
     private void avaliarSaida(Transacao transacao) {
-        SituacaoConta situacao;
+        Optional<SituacaoConta> situacao;
         try {
             situacao = conta.consultar(transacao.getUsuarioId());
         } catch (ServicoSaldoIndisponivelException e) {
             // Dúvida 2: sem saldo confirmado, nunca aprova às cegas. A rejeição é gravada com o motivo.
             transacao.rejeitar(MotivoRejeicao.SERVICO_SALDO_INDISPONIVEL);
+            return;
+        }
+        if (situacao.isEmpty()) {
+            transacao.rejeitar(MotivoRejeicao.CONTA_INEXISTENTE);
             return;
         }
 
@@ -124,6 +128,6 @@ public class TransacaoService
         BigDecimal jaGastoHoje = repositorio.somarSaidasAprovadas(
                 transacao.getUsuarioId(), inicioDoDia, inicioDeAmanha);
 
-        transacao.avaliar(situacao, jaGastoHoje);
+        transacao.avaliar(situacao.get(), jaGastoHoje);
     }
 }
