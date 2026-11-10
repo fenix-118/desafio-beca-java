@@ -1,5 +1,6 @@
 package com.beca.transacoes.infrastructure.adapter.in.web;
 
+import com.beca.transacoes.application.port.out.FalhaIntegracaoUsuariosException;
 import com.beca.transacoes.application.port.out.ServicoUsuariosIndisponivelException;
 import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
@@ -26,6 +27,9 @@ public class ApiExceptionHandler {
     static final String USUARIOS_INDISPONIVEL =
             "Serviço de usuários indisponível; tente novamente em instantes.";
 
+    static final String FALHA_INTEGRACAO_USUARIOS =
+            "Erro na integração com o serviço de usuários; a transação não foi registrada.";
+
     static final String CORPO_ILEGIVEL =
             "Corpo da requisição inválido: confira o JSON e os valores aceitos em 'tipo' e 'categoria'.";
 
@@ -44,6 +48,12 @@ public class ApiExceptionHandler {
     public ProblemDetail usuariosIndisponivel(ServicoUsuariosIndisponivelException ex) {
         log.warn("MS1 indisponível: {}", ex.getCause() == null ? ex.getMessage() : ex.getCause().getClass().getSimpleName());
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, USUARIOS_INDISPONIVEL);
+    }
+
+    /** 4xx inesperado do MS1: o log.error com o status já foi feito no adapter. */
+    @ExceptionHandler(FalhaIntegracaoUsuariosException.class)
+    public ProblemDetail falhaIntegracaoUsuarios(FalhaIntegracaoUsuariosException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, FALHA_INTEGRACAO_USUARIOS);
     }
 
     @ExceptionHandler(DadosInvalidosException.class)

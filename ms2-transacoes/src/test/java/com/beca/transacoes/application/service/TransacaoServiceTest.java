@@ -240,13 +240,17 @@ class TransacaoServiceTest {
     }
 
     @Test
-    void ms1ForaDoArAoConferirODestinoNaoGravaNada() {
+    void ms1ForaDoArAoConferirODestinoRejeitaComMotivoEGrava() {
         when(usuarios.existe(1L)).thenReturn(true);
         when(usuarios.existe(2L)).thenThrow(new ServicoUsuariosIndisponivelException("timeout", null));
+        salvarDevolveOMesmo();
 
-        assertThatThrownBy(() -> service.registrar(saida(TipoTransacao.TRANSFERENCIA, "10.00")))
-                .isInstanceOf(ServicoUsuariosIndisponivelException.class);
-        verifyNoInteractions(conta, repositorio);
+        Transacao t = service.registrar(saida(TipoTransacao.TRANSFERENCIA, "10.00"));
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.REJEITADA);
+        assertThat(t.getMotivoRejeicao()).isEqualTo(MotivoRejeicao.SERVICO_USUARIOS_INDISPONIVEL);
+        assertThat(gravada()).isSameAs(t);
+        verifyNoInteractions(conta);
     }
 
     // ---------- listagem (BJ-6) ----------

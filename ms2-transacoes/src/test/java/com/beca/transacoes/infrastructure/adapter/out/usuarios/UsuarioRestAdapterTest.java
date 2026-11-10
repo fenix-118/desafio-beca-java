@@ -1,5 +1,6 @@
 package com.beca.transacoes.infrastructure.adapter.out.usuarios;
 
+import com.beca.transacoes.application.port.out.FalhaIntegracaoUsuariosException;
 import com.beca.transacoes.application.port.out.ServicoUsuariosIndisponivelException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,5 +70,15 @@ class UsuarioRestAdapterTest {
 
         assertThatThrownBy(() -> adapter.existe(1L))
                 .isInstanceOf(ServicoUsuariosIndisponivelException.class);
+    }
+
+    @Test
+    void outro4xxDoMs1EErroDeIntegracaoComOStatusENaoIndisponivel() {
+        ms1.expect(requestTo(MS1 + "/usuarios/1"))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN));
+
+        assertThatThrownBy(() -> adapter.existe(1L))
+                .isInstanceOf(FalhaIntegracaoUsuariosException.class)
+                .hasMessageContaining("403");
     }
 }
