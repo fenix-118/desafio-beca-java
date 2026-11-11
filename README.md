@@ -75,6 +75,17 @@ O MS2 fala com o MS1 pelo **nome do serviço** (`http://ms1-usuarios:8081`) na r
 
 > Na rede corporativa, o `--build` pode falhar ao baixar as dependências do Maven dentro do container. Nesse caso, rode os serviços pela IDE (passo 3) e use o Compose só para o PostgreSQL.
 
+### 5. Derrubar e subir de novo
+
+| Comando | O que acontece com os dados |
+|---|---|
+| `docker compose down` e depois `docker compose up -d` | **Ficam**: o banco está no volume `pgdata`, que sobrevive ao `down` |
+| `docker compose restart ms2-transacoes` | Ficam; só o MS2 reinicia (útil para testar o MS2 com o MS1 no ar) |
+| `docker compose stop ms1-usuarios` | Ficam; serve para mostrar o MS2 com o MS1 fora do ar (503 ao conferir o dono) |
+| `docker compose down -v` e depois `docker compose up -d --build` | **Somem**: o `-v` apaga o volume, e o banco é recriado vazio pelo `docker/postgres/init.sql` |
+
+Para conferir que os dados sobreviveram: `curl -s http://localhost:8081/usuarios` antes e depois do `down`/`up`.
+
 ### Serviços
 
 | Serviço | Porta | Health check |
