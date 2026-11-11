@@ -1,0 +1,57 @@
+package com.beca.transacoes.application.service;
+
+import com.beca.transacoes.application.port.in.ConsultarDespesasUseCase;
+import com.beca.transacoes.application.port.out.TransacaoRepositoryPort;
+import com.beca.transacoes.domain.exception.DadosInvalidosException;
+import com.beca.transacoes.domain.model.MensagensTransacao;
+import com.beca.transacoes.domain.model.ResumoDespesas;
+import com.beca.transacoes.domain.model.TipoTransacao;
+import com.beca.transacoes.domain.model.Transacao;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
+
+/** Análise de despesas (pedido 5): soma as saídas aprovadas do usuário no período. */
+public class DespesaService implements ConsultarDespesasUseCase {
+
+    static final String PERIODO_OBRIGATORIO = "Informe 'inicio' e 'fim' para consultar as despesas.";
+    static final String PERIODO_INVALIDO = "A data 'inicio' deve ser anterior ou igual à data 'fim'.";
+
+    /** Só saídas podem ser despesa; o filtro de status (aprovada) fica no domínio. */
+    private static final Set<TipoTransacao> SAIDAS =
+            EnumSet.of(TipoTransacao.RETIRADA, TipoTransacao.TRANSFERENCIA, TipoTransacao.COMPRA);
+
+    private final TransacaoRepositoryPort repositorio;
+    private final Clock relogio;
+
+    public DespesaService(TransacaoRepositoryPort repositorio, Clock relogio) {
+        this.repositorio = repositorio;
+        this.relogio = relogio;
+    }
+
+    @Override
+    public ResumoDoPeriodo consultar(ConsultarDespesasQuery consulta) {
+        if (consulta.usuarioId() == null || consulta.usuarioId() <= 0) {
+            throw new DadosInvalidosException(MensagensTransacao.USUARIO_OBRIGATORIO);
+        }
+        LocalDate inicio = consulta.inicio();
+        LocalDate fim = consulta.fim();
+        if (inicio == null || fim == null) {
+            throw new DadosInvalidosException(PERIODO_OBRIGATORIO);
+        }
+        if (inicio.isAfter(fim)) {
+            throw new DadosInvalidosException(PERIODO_INVALIDO);
+        }
+
+        // Datas são dias em São Paulo; o fim é incluído, por isso o limite é o início do dia seguinte.
+        Instant de = inicio.atStartOfDay(DiaSaoPaulo.FUSO).toInstant();
+        Instant ate = fim.plusDays(1).atStartOfDay(DiaSaoPaulo.FUSO).toInstant();
+        List<Transacao> transacoes = repositorio.listar(consulta.usuarioId(), de, ate, SAIDAS);
+
+        return new ResumoDoPeriodo(consulta.usuarioId(), inicio, fim, ResumoDespesas.calcular(transacoes));
+    }
+}
