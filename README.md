@@ -25,11 +25,12 @@ cp .env.example .env
 
 Depois, preencha os valores no `.env`:
 
-| Variável | Descrição |
-|---|---|
-| `POSTGRES_USER` | Usuário do PostgreSQL |
-| `POSTGRES_PASSWORD` | Senha do PostgreSQL |
-| `MOCKAPI_BASE_URL` | URL base da API Mock |
+| Variável | Obrigatória | Descrição |
+|---|---|---|
+| `POSTGRES_USER` | Sim | Usuário do PostgreSQL |
+| `POSTGRES_PASSWORD` | Sim | Senha do PostgreSQL |
+| `MOCKAPI_BASE_URL` | Sim, para o MS2 | URL base da API Mock (recurso `contas`); sem ela o MS2 não sobe |
+| `MS1_BASE_URL` | Não | Endereço do MS1 usado pelo MS2 (padrão `http://localhost:8081`) |
 
 ### 2. Subir o banco
 
@@ -40,17 +41,27 @@ docker compose up -d postgres
 O PostgreSQL fica disponível em `localhost:5433`, com os bancos `usuarios_db` e `transacoes_db`.
 
 ### 3. Rodar pela IDE (IntelliJ)
-Basta executar `Ms1UsuariosApplication` (ou `Ms2TransacoesApplication`).
+Basta executar `Ms1UsuariosApplication` e `Ms2TransacoesApplication`, nessa ordem: o MS2 consulta o MS1 antes de registrar cada transação.
 Não é preciso configurar variáveis na IDE: o `application.yml` importa o `.env` automaticamente com
 `spring.config.import`. Valores definidos em `SPRING_DATASOURCE_*` têm prioridade sobre o `.env`.
 
-### 4. Rodar tudo pelo Docker Compose
+#### Rede corporativa (proxy)
+
+Se o MS2 não conseguir acessar a API Mock na rede da empresa, adicione nas **VM options** da Run Configuration do `Ms2TransacoesApplication` (**Run → Edit Configurations → Modify options → Add VM options**):
+
+```
+-Djava.net.useSystemProxies=true -Djavax.net.ssl.trustStoreType=Windows-ROOT
+```
+
+A primeira opção faz o Java usar o proxy do Windows; a segunda faz ele confiar nos certificados instalados no Windows, incluindo os da empresa.
+
+### 4. Rodar pelo Docker Compose
 
 ```bash
 docker compose up -d --build
 ```
 
-> O MS2 ainda não está no Compose. Ele será adicionado quando o serviço de transações estiver implementado.
+> O MS2 ainda não está no Compose: por enquanto, ele roda pela IDE. O Compose sobe o PostgreSQL e o MS1.
 
 ### Serviços
 
@@ -58,11 +69,11 @@ docker compose up -d --build
 |---|---|---|
 | MS1 - Usuários | 8081 | http://localhost:8081/actuator/health |
 | MS2 - Transações | 8082 | http://localhost:8082/actuator/health |
-| PostgreSQL | 5433 | — |_
+| PostgreSQL | 5433 | — |
 
-### Documentação da API (Swagger)
+## Documentação da API (Swagger)
 
-Com os serviços rodando (pela IDE ou pelo Compose):
+Com os serviços rodando (o MS1 pela IDE ou pelo Compose, o MS2 pela IDE):
 
 | Recurso | MS1 - Usuários | MS2 - Transações |
 |---|---|---|
@@ -71,7 +82,7 @@ Com os serviços rodando (pela IDE ou pelo Compose):
 
 Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação de CSV (botão **Try it out**). Há arquivos de exemplo em `samples/`.
 
-### Transações (MS2)
+## Transações (MS2)
 
 | Método e rota | O que faz |
 |---|---|
@@ -88,14 +99,14 @@ Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, tr
 >
 > **Transferência debita só quem envia (proposital).** O destino pode não ter conta na Mock, e creditar o destino exigiria um segundo `PUT` sem como desfazer os dois juntos. A transferência fica registrada com `usuarioDestinoId`; creditar o destino está como proposta para o PO.
 
-#### Limitações conhecidas (e como resolveríamos)
+### Limitações conhecidas (e como resolveríamos)
 
 | Limitação | O que pode acontecer | Como mitigamos hoje | Solução em produção |
 |---|---|---|---|
 | **Concorrência** | Duas saídas ao mesmo tempo do mesmo usuário leem o mesmo saldo; a segunda sobrescreve a primeira no `PUT` (atualização perdida) e as duas podem passar no limite diário | Nada no código: documentado | Trava por conta (ex.: `SELECT ... FOR UPDATE` num registro do usuário), versão otimista na conta (`If-Match`/versão) ou o saldo como soma das transações no próprio banco |
 | **Mock e banco sem transação única** | O `PUT` na Mock acontece antes de gravar; se a gravação falhar, o saldo já mudou sem registro | Log de erro com a conta e o saldo (anterior → novo) e tentativa de voltar o saldo anterior; se não der, log `AJUSTE MANUAL` | Padrão *outbox*/saga: gravar a transação como pendente, atualizar o saldo e confirmar, com reprocessamento |
 
-#### API Mock fora do ar
+### API Mock fora do ar
 
 Sem saldo confirmado, o MS2 nunca aprova às cegas (tempo limite de 2 s em cada chamada):
 
@@ -106,7 +117,9 @@ Sem saldo confirmado, o MS2 nunca aprova às cegas (tempo limite de 2 s em cada 
 
 Para testar: troque `MOCKAPI_BASE_URL` no `.env` por um endereço inexistente (ex.: `https://invalido.mockapi.io/api/v1`), reinicie o MS2 e faça uma compra. Depois volte a URL certa.
 
-> O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar. Pela IDE, suba o MS1 antes (endereço em `MS1_BASE_URL`, padrão `http://localhost:8081`); no Compose, o MS2 só sobe depois que o healthcheck do MS1 responde `UP`.
+### Consulta ao MS1 (usuários)
+
+O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar. Pela IDE, suba o MS1 antes do MS2 (endereço em `MS1_BASE_URL`, padrão `http://localhost:8081`).
 
 | Situação no MS1 | Resposta do MS2 | Grava? |
 |---|---|---|
