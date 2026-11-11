@@ -1,7 +1,9 @@
 package com.beca.transacoes.infrastructure.adapter.in.web;
 
 import com.beca.transacoes.application.port.out.FalhaIntegracaoUsuariosException;
+import com.beca.transacoes.application.port.out.ServicoSaldoIndisponivelException;
 import com.beca.transacoes.application.port.out.ServicoUsuariosIndisponivelException;
+import com.beca.transacoes.domain.exception.ContaNaoEncontradaException;
 import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
 import com.beca.transacoes.domain.exception.UsuarioNaoEncontradoException;
@@ -30,6 +32,9 @@ public class ApiExceptionHandler {
     static final String FALHA_INTEGRACAO_USUARIOS =
             "Erro na integração com o serviço de usuários; a transação não foi registrada.";
 
+    static final String SALDO_INDISPONIVEL =
+            "Serviço de saldo indisponível; tente novamente em instantes.";
+
     static final String CORPO_ILEGIVEL =
             "Corpo da requisição inválido: confira o JSON e os valores aceitos em 'tipo' e 'categoria'.";
 
@@ -46,7 +51,7 @@ public class ApiExceptionHandler {
     /** MS1 fora do ar: nada é gravado e o cliente pode tentar de novo. O detalhe técnico fica só no log. */
     @ExceptionHandler(ServicoUsuariosIndisponivelException.class)
     public ProblemDetail usuariosIndisponivel(ServicoUsuariosIndisponivelException ex) {
-        log.warn("MS1 indisponível: {}", ex.getCause() == null ? ex.getMessage() : ex.getCause().getClass().getSimpleName());
+        log.warn("MS1 indisponível: {}", causaRaiz(ex));
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, USUARIOS_INDISPONIVEL);
     }
 
@@ -54,6 +59,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(FalhaIntegracaoUsuariosException.class)
     public ProblemDetail falhaIntegracaoUsuarios(FalhaIntegracaoUsuariosException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, FALHA_INTEGRACAO_USUARIOS);
+    }
+
+    @ExceptionHandler(ContaNaoEncontradaException.class)
+    public ProblemDetail contaNaoEncontrada(ContaNaoEncontradaException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    /** Só chega aqui na consulta de saldo: no registro, a Mock fora do ar vira transação REJEITADA com motivo. */
+    @ExceptionHandler(ServicoSaldoIndisponivelException.class)
+    public ProblemDetail saldoIndisponivel(ServicoSaldoIndisponivelException ex) {
+        log.warn("API Mock indisponível: {}", causaRaiz(ex));
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, SALDO_INDISPONIVEL);
     }
 
     @ExceptionHandler(DadosInvalidosException.class)
@@ -88,5 +105,14 @@ public class ApiExceptionHandler {
         ProblemDetail problema = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Dados inválidos.");
         problema.setProperty("campos", campos);
         return problema;
+    }
+
+    /** Tipo do erro mais interno (ex.: SSLHandshakeException, ConnectException), sem URL nem dados. */
+    static String causaRaiz(Throwable e) {
+        Throwable raiz = e;
+        while (raiz.getCause() != null && raiz.getCause() != raiz) {
+            raiz = raiz.getCause();
+        }
+        return raiz.getClass().getSimpleName();
     }
 }

@@ -2,11 +2,22 @@ package com.beca.transacoes.application.port.out;
 
 import com.beca.transacoes.domain.model.SituacaoConta;
 
-/** Fonte do saldo e dos limites da conta. No pedido 2 o adaptador passa a ser a API Mock. */
+import java.math.BigDecimal;
+import java.util.Optional;
+
+/** Fonte do saldo e dos limites da conta do usuário (a API Mock). */
 public interface ContaPort {
 
     /**
-     * @throws ServicoSaldoIndisponivelException se a fonte do saldo não responder
+     * @return a situação atual da conta, ou vazio se o usuário não tem conta
+     * @throws ServicoSaldoIndisponivelException se a fonte do saldo não responder ou devolver dados inválidos
      */
-    SituacaoConta consultar(Long usuarioId);
+    Optional<SituacaoConta> consultar(Long usuarioId);
+
+    /**
+     * Grava o novo saldo da conta. Chamado antes de aprovar: se falhar, a transação não é aprovada.
+     *
+     * @throws ServicoSaldoIndisponivelException se a fonte do saldo não responder ou a conta sumir
+     */
+    void atualizarSaldo(Long usuarioId, BigDecimal novoSaldo);
 }
