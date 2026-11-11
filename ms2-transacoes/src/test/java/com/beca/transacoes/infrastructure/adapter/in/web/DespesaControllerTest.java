@@ -81,6 +81,22 @@ class DespesaControllerTest {
     }
 
     @Test
+    void semDatasRepassaOPeriodoVazioParaOCasoDeUsoUsarOMesAtual() throws Exception {
+        LocalDate inicio = LocalDate.of(2026, 11, 1);
+        LocalDate fim = LocalDate.of(2026, 11, 30);
+        when(consultar.consultar(new ConsultarDespesasQuery(3L, null, null)))
+                .thenReturn(new ResumoDoPeriodo(3L, inicio, fim,
+                        ResumoDespesas.calcular(List.of(), ZoneId.of("America/Sao_Paulo"))));
+
+        mvc.perform(get("/despesas/resumo").param("usuarioId", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inicio").value("2026-11-01"))
+                .andExpect(jsonPath("$.fim").value("2026-11-30"))
+                .andExpect(jsonPath("$.totalGeral").value(0.0))
+                .andExpect(jsonPath("$.porCategoria").isEmpty());
+    }
+
+    @Test
     void semUsuarioResponde400() throws Exception {
         mvc.perform(get("/despesas/resumo"))
                 .andExpect(status().isBadRequest());

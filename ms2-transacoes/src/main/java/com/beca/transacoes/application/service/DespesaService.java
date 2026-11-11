@@ -11,6 +11,7 @@ import com.beca.transacoes.domain.model.Transacao;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -18,7 +19,8 @@ import java.util.Set;
 /** Análise de despesas (pedido 5): soma as saídas aprovadas do usuário no período. */
 public class DespesaService implements ConsultarDespesasUseCase {
 
-    static final String PERIODO_OBRIGATORIO = "Informe 'inicio' e 'fim' para consultar as despesas.";
+    static final String PERIODO_INCOMPLETO =
+            "Informe 'inicio' e 'fim' juntos, ou nenhum dos dois para consultar o mês atual.";
     static final String PERIODO_INVALIDO = "A data 'inicio' deve ser anterior ou igual à data 'fim'.";
 
     /** Só saídas podem ser despesa; o filtro de status (aprovada) fica no domínio. */
@@ -40,8 +42,13 @@ public class DespesaService implements ConsultarDespesasUseCase {
         }
         LocalDate inicio = consulta.inicio();
         LocalDate fim = consulta.fim();
-        if (inicio == null || fim == null) {
-            throw new DadosInvalidosException(PERIODO_OBRIGATORIO);
+        if (inicio == null && fim == null) {
+            // Período padrão: o mês atual em São Paulo, do dia 1º ao último dia (tarefa 5.4).
+            YearMonth mesAtual = YearMonth.now(relogio.withZone(DiaSaoPaulo.FUSO));
+            inicio = mesAtual.atDay(1);
+            fim = mesAtual.atEndOfMonth();
+        } else if (inicio == null || fim == null) {
+            throw new DadosInvalidosException(PERIODO_INCOMPLETO);
         }
         if (inicio.isAfter(fim)) {
             throw new DadosInvalidosException(PERIODO_INVALIDO);

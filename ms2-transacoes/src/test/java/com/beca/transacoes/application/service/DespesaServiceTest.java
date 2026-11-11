@@ -64,6 +64,44 @@ class DespesaServiceTest {
     }
 
     @Test
+    void semPeriodoUsaOMesAtualEmSaoPaulo() {
+        // AGORA = 10/11/2026 em São Paulo: o mês atual vai de 01/11 a 30/11.
+        when(repositorio.listar(3L, Instant.parse("2026-11-01T03:00:00Z"), Instant.parse("2026-12-01T03:00:00Z"), SAIDAS))
+                .thenReturn(List.of());
+
+        ResumoDoPeriodo r = service.consultar(new ConsultarDespesasQuery(3L, null, null));
+
+        assertThat(r.inicio()).isEqualTo(LocalDate.of(2026, 11, 1));
+        assertThat(r.fim()).isEqualTo(LocalDate.of(2026, 11, 30));
+        assertThat(r.resumo().totalGeral()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void oMesAtualEODeSaoPauloNaViradaDoMes() {
+        // 01/12 às 01:00 UTC ainda é 30/11 às 22:00 em São Paulo: o mês atual é novembro.
+        DespesaService naVirada = new DespesaService(repositorio,
+                Clock.fixed(Instant.parse("2026-12-01T01:00:00Z"), ZoneOffset.UTC));
+        when(repositorio.listar(3L, Instant.parse("2026-11-01T03:00:00Z"), Instant.parse("2026-12-01T03:00:00Z"), SAIDAS))
+                .thenReturn(List.of());
+
+        ResumoDoPeriodo r = naVirada.consultar(new ConsultarDespesasQuery(3L, null, null));
+
+        assertThat(r.inicio()).isEqualTo(LocalDate.of(2026, 11, 1));
+        assertThat(r.fim()).isEqualTo(LocalDate.of(2026, 11, 30));
+    }
+
+    @Test
+    void recusaPeriodoComSoUmaDasDatas() {
+        assertThatThrownBy(() -> service.consultar(new ConsultarDespesasQuery(3L, LocalDate.of(2026, 11, 1), null)))
+                .isInstanceOf(DadosInvalidosException.class)
+                .hasMessage(DespesaService.PERIODO_INCOMPLETO);
+        assertThatThrownBy(() -> service.consultar(new ConsultarDespesasQuery(3L, null, LocalDate.of(2026, 11, 30))))
+                .isInstanceOf(DadosInvalidosException.class)
+                .hasMessage(DespesaService.PERIODO_INCOMPLETO);
+        verifyNoInteractions(repositorio);
+    }
+
+    @Test
     void recusaUsuarioInvalido() {
         assertThatThrownBy(() -> service.consultar(
                 new ConsultarDespesasQuery(0L, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))))

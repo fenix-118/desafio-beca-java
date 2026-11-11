@@ -10,6 +10,8 @@ public interface ConsultarDespesasUseCase {
     ResumoDoPeriodo consultar(ConsultarDespesasQuery consulta);
 
     /**
+     * Sem inicio e sem fim, o período é o mês atual em São Paulo. Informar só um dos dois é inválido.
+     *
      * @param inicio primeiro dia incluído (aaaa-mm-dd, fuso de São Paulo)
      * @param fim    último dia incluído
      */
