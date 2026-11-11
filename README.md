@@ -91,6 +91,7 @@ Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação
 | `GET /transacoes/{id}` | Consulta uma transação |
 | `GET /transacoes?usuarioId=1&inicio=2026-11-01&fim=2026-11-30&tipo=COMPRA` | Lista as transações do usuário; período e tipo são opcionais |
 | `GET /contas/{usuarioId}/saldo` | Saldo e limites lidos da API Mock no momento, o gasto de hoje e quanto ainda pode sair |
+| `GET /despesas/resumo?usuarioId=3&inicio=2026-11-01&fim=2026-11-30` | Análise de despesas: total por categoria, por dia e por mês, com o total geral; sem datas, usa o mês atual |
 
 Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, transferência e compra) exigem categoria; transferência exige `usuarioDestinoId`; saídas são conferidas contra saldo, limite por transação e limite diário (dia no fuso de São Paulo); depósito não tem limite nem exige saldo, mas precisa da conta na Mock para ser creditado: sem conta, ou com a Mock fora do ar, ele é rejeitado.
 
@@ -145,6 +146,36 @@ O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar. Pela IDE, suba o
 | MS1 responde outro 4xx (ex.: 403) | 502, com `log.error` do status | Não |
 
 **Por que o dono e o destino são tratados diferente:** uma transação só existe se tiver um dono confirmado. Sem conseguir falar com o MS1 na checagem do dono, não há de quem registrar a tentativa, então a resposta é 503 e o cliente tenta de novo. Na checagem do destino o dono já foi confirmado, então vale a mesma regra do saldo: a transação não é aprovada às cegas e fica gravada como `REJEITADA` com o motivo.
+
+## Análise de despesas (MS2)
+
+`GET /despesas/resumo` soma as despesas do usuário no período e responde com o total geral, a quantidade e três agrupamentos:
+
+| Campo | O que traz |
+|---|---|
+| `porCategoria` | Uma linha por categoria, da maior para a menor |
+| `porDia` | Uma linha por dia com despesa (aaaa-mm-dd), em ordem cronológica |
+| `porMes` | Uma linha por mês com despesa (aaaa-mm), em ordem cronológica |
+
+| Regra | Por quê |
+|---|---|
+| Só entram saídas **aprovadas**: retirada, transferência enviada e compra | Depósito não é gasto, e rejeitada não tirou dinheiro da conta |
+| O dia e o mês são os de **São Paulo** | Mesma regra do limite diário: uma compra às 22h do dia 31 conta no dia 31, mesmo sendo dia 1º em UTC |
+| Sem `inicio` e `fim`, o período é o **mês atual** (do dia 1º ao último dia) | O caso mais comum não precisa de parâmetros; a resposta mostra o período usado |
+| Só uma das datas → 400; `inicio` depois de `fim` → 400 | Evita um período ambíguo |
+
+Exemplo de resposta:
+
+```json
+{
+  "usuarioId": 3, "inicio": "2026-11-01", "fim": "2026-11-30", "moeda": "BRL",
+  "totalGeral": 150.00, "quantidade": 2,
+  "porCategoria": [ { "categoria": "MORADIA", "total": 100.00, "quantidade": 1 },
+                    { "categoria": "ALIMENTACAO", "total": 50.00, "quantidade": 1 } ],
+  "porDia": [ { "dia": "2026-11-10", "total": 150.00, "quantidade": 2 } ],
+  "porMes": [ { "mes": "2026-11", "total": 150.00, "quantidade": 2 } ]
+}
+```
 
 ## Tecnologias
 

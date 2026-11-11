@@ -40,7 +40,8 @@ public class DespesaController {
     @Operation(summary = "Resumo das despesas do usuário no período",
             description = "Soma só as saídas APROVADAS (retirada, transferência enviada e compra); depósitos e "
                     + "transações rejeitadas não entram. Traz o total por categoria, por dia e por mês. As datas são dias no fuso de São Paulo e o dia final é "
-                    + "incluído. Responde 400 se o período for inválido.")
+                    + "incluído. Sem 'inicio' e 'fim', usa o mês atual. Responde 400 se só uma das datas for informada "
+                    + "ou se 'inicio' for depois de 'fim'.")
     @ApiResponse(responseCode = "200", description = "Resumo por categoria, por dia e por mês, com o total geral")
     @ApiResponse(responseCode = "400", description = "Parâmetros inválidos",
             content = @Content(mediaType = "application/problem+json",
@@ -49,7 +50,7 @@ public class DespesaController {
     public ResumoDespesasResponse resumo(
             @Parameter(description = "Id do usuário", example = "3")
             @RequestParam Long usuarioId,
-            @Parameter(description = "Primeiro dia (aaaa-mm-dd)", example = "2026-11-01")
+            @Parameter(description = "Primeiro dia (aaaa-mm-dd); sem ele e sem 'fim', o mês atual", example = "2026-11-01")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @Parameter(description = "Último dia, incluído (aaaa-mm-dd)", example = "2026-11-30")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fim) {
