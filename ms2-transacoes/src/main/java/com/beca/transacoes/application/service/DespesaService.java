@@ -52,6 +52,7 @@ public class DespesaService implements ConsultarDespesasUseCase {
         Instant ate = fim.plusDays(1).atStartOfDay(DiaSaoPaulo.FUSO).toInstant();
         List<Transacao> transacoes = repositorio.listar(consulta.usuarioId(), de, ate, SAIDAS);
 
-        return new ResumoDoPeriodo(consulta.usuarioId(), inicio, fim, ResumoDespesas.calcular(transacoes));
+        return new ResumoDoPeriodo(consulta.usuarioId(), inicio, fim,
+                ResumoDespesas.calcular(transacoes, DiaSaoPaulo.FUSO));
     }
 }

@@ -13,8 +13,17 @@ public record ResumoDespesasResponse(
         String moeda,
         BigDecimal totalGeral,
         int quantidade,
-        List<CategoriaResponse> porCategoria) {
+        List<CategoriaResponse> porCategoria,
+        List<DiaResponse> porDia,
+        List<MesResponse> porMes) {
 
     public record CategoriaResponse(Categoria categoria, BigDecimal total, int quantidade) {
+    }
+
+    public record DiaResponse(LocalDate dia, BigDecimal total, int quantidade) {
+    }
+
+    /** @param mes no formato aaaa-mm */
+    public record MesResponse(String mes, BigDecimal total, int quantidade) {
     }
 }
