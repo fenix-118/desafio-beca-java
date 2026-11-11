@@ -15,6 +15,8 @@ public interface UsuarioRepositoryPort {
 
     boolean existePorEmail(String email);
 
+    Optional<Usuario> buscarPorEmail(String email);
+
     boolean existePorId(Long id);
 
     void excluirPorId(Long id);
