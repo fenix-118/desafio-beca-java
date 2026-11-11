@@ -1,8 +1,10 @@
 package com.beca.transacoes.infrastructure.adapter.in.web;
 
-import com.beca.transacoes.application.port.in.ConsultarSaldoUseCase;
 import com.beca.transacoes.application.port.in.ConsultarSaldoUseCase.SaldoDaConta;
+import com.beca.transacoes.application.port.in.ConsultarSaldoUseCase;
 import com.beca.transacoes.infrastructure.adapter.in.web.dto.SaldoResponse;
+import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.AutenticacaoBasicaFilter;
+import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.Dono;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -12,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -40,9 +43,15 @@ public class SaldoController {
     @ApiResponse(responseCode = "503", description = "API Mock ou MS1 indisponível",
             content = @Content(mediaType = "application/problem+json",
                     schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "Os dados são de outro usuário",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
     @GetMapping("/{usuarioId}/saldo")
     public SaldoResponse consultar(@Parameter(description = "Id do usuário no MS1", example = "3")
-                                   @PathVariable Long usuarioId) {
+                                   @PathVariable Long usuarioId,
+                                   @Parameter(hidden = true)
+                                   @RequestAttribute(name = AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, required = false) Long usuarioAutenticado) {
+        Dono.exigir(usuarioAutenticado, usuarioId);
         SaldoDaConta s = consultarSaldo.consultar(usuarioId);
         return new SaldoResponse(s.usuarioId(), s.saldo(), MOEDA_BASE, s.limitePorTransacao(), s.limiteDiario(),
                 s.gastoHoje(), s.limiteDiarioDisponivel(), s.consultadoEm());
