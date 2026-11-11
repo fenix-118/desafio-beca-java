@@ -236,6 +236,8 @@ cd ../ms2-transacoes && mvn clean test
 
 Pelo IntelliJ: painel **Maven** → módulo → **Lifecycle** → `clean` + `test`. Cada build gera o relatório de cobertura do JaCoCo em `target/site/jacoco/index.html` (abra no navegador): a cobertura por pacote e por classe, e as linhas cobertas e não cobertas de cada arquivo. As classes `*Application` ficam de fora, porque só sobem o Spring.
 
+As consultas do MS2 (soma das saídas aprovadas do dia e listagem por período e tipo) são testadas de verdade com `@DataJpaTest` num H2 em memória, com o esquema criado pela mesma migração `V1` do Flyway. Não precisa de Docker nem do PostgreSQL no ar.
+
 ## Login (MS1 e MS2)
 
 Todas as rotas do MS2 pedem **login básico** (HTTP Basic) com o e-mail e a senha cadastrados no MS1. A cada requisição, o MS2 confere as credenciais no MS1 pelo nome do serviço; o MS2 nunca guarda senha.
