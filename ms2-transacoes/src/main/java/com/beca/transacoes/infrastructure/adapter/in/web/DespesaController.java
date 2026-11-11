@@ -6,6 +6,8 @@ import com.beca.transacoes.application.port.in.ConsultarDespesasUseCase.ResumoDo
 import com.beca.transacoes.domain.model.ResumoDespesas;
 import com.beca.transacoes.infrastructure.adapter.in.web.dto.ResumoDespesasResponse;
 import com.beca.transacoes.infrastructure.adapter.in.web.dto.ResumoDespesasResponse.CategoriaResponse;
+import com.beca.transacoes.infrastructure.adapter.in.web.dto.ResumoDespesasResponse.DiaResponse;
+import com.beca.transacoes.infrastructure.adapter.in.web.dto.ResumoDespesasResponse.MesResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -37,9 +39,9 @@ public class DespesaController {
 
     @Operation(summary = "Resumo das despesas do usuário no período",
             description = "Soma só as saídas APROVADAS (retirada, transferência enviada e compra); depósitos e "
-                    + "transações rejeitadas não entram. As datas são dias no fuso de São Paulo e o dia final é "
+                    + "transações rejeitadas não entram. Traz o total por categoria, por dia e por mês. As datas são dias no fuso de São Paulo e o dia final é "
                     + "incluído. Responde 400 se o período for inválido.")
-    @ApiResponse(responseCode = "200", description = "Resumo por categoria com o total geral")
+    @ApiResponse(responseCode = "200", description = "Resumo por categoria, por dia e por mês, com o total geral")
     @ApiResponse(responseCode = "400", description = "Parâmetros inválidos",
             content = @Content(mediaType = "application/problem+json",
                     schema = @Schema(implementation = ProblemDetail.class)))
@@ -57,6 +59,12 @@ public class DespesaController {
                 resumo.totalGeral(), resumo.quantidade(),
                 resumo.porCategoria().stream()
                         .map(c -> new CategoriaResponse(c.categoria(), c.total(), c.quantidade()))
+                        .toList(),
+                resumo.porDia().stream()
+                        .map(d -> new DiaResponse(d.dia(), d.total(), d.quantidade()))
+                        .toList(),
+                resumo.porMes().stream()
+                        .map(mes -> new MesResponse(mes.mes().toString(), mes.total(), mes.quantidade()))
                         .toList());
     }
 }

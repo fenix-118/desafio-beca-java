@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -48,7 +49,7 @@ class DespesaControllerTest {
         LocalDate inicio = LocalDate.of(2026, 11, 1);
         LocalDate fim = LocalDate.of(2026, 11, 30);
         ResumoDespesas resumo = ResumoDespesas.calcular(List.of(
-                compra("100.00", Categoria.MORADIA), compra("50.00", Categoria.ALIMENTACAO)));
+                compra("100.00", Categoria.MORADIA), compra("50.00", Categoria.ALIMENTACAO)), ZoneId.of("America/Sao_Paulo"));
         when(consultar.consultar(new ConsultarDespesasQuery(3L, inicio, fim)))
                 .thenReturn(new ResumoDoPeriodo(3L, inicio, fim, resumo));
 
@@ -63,7 +64,11 @@ class DespesaControllerTest {
                 .andExpect(jsonPath("$.quantidade").value(2))
                 .andExpect(jsonPath("$.porCategoria[0].categoria").value("MORADIA"))
                 .andExpect(jsonPath("$.porCategoria[0].total").value(100.0))
-                .andExpect(jsonPath("$.porCategoria[1].categoria").value("ALIMENTACAO"));
+                .andExpect(jsonPath("$.porCategoria[1].categoria").value("ALIMENTACAO"))
+                .andExpect(jsonPath("$.porDia[0].dia").value("2026-11-10"))
+                .andExpect(jsonPath("$.porDia[0].total").value(150.0))
+                .andExpect(jsonPath("$.porMes[0].mes").value("2026-11"))
+                .andExpect(jsonPath("$.porMes[0].quantidade").value(2));
     }
 
     @Test
