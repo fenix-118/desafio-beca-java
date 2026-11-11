@@ -86,6 +86,16 @@ O MS2 fala com o MS1 pelo **nome do serviço** (`http://ms1-usuarios:8081`) na r
 
 Para conferir que os dados sobreviveram: `curl -s http://localhost:8081/usuarios` antes e depois do `down`/`up`.
 
+### 6. Dados de exemplo para a demonstração
+
+Com os serviços no ar, o script abaixo cadastra os usuários do `samples/usuarios-exemplo.csv` no MS1 e registra no MS2 uma sequência de transações de um usuário que tenha conta na API Mock:
+
+```bash
+bash docker/demo/carregar-dados-demo.sh 3 4
+```
+
+Os argumentos são o id do usuário que faz as transações (padrão `3`) e o id do destino da transferência (padrão `4`); os dois precisam existir no MS1 e ter conta na Mock. O script mostra o status de cada transação e termina com o saldo e o resumo de despesas do mês. Rodar de novo cria transações novas (o CSV repetido só gera falhas de e-mail já cadastrado). Os endereços podem ser trocados por `MS1_URL` e `MS2_URL`.
+
 ### Serviços
 
 | Serviço | Porta | Health check |
