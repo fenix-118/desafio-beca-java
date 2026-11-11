@@ -212,6 +212,15 @@ Exemplo de resposta:
 }
 ```
 
+## Testes e cobertura
+
+```bash
+cd ms1-usuarios && mvn clean test
+cd ../ms2-transacoes && mvn clean test
+```
+
+Pelo IntelliJ: painel **Maven** → módulo → **Lifecycle** → `clean` + `test`. Cada build gera o relatório de cobertura do JaCoCo em `target/site/jacoco/index.html` (abra no navegador): a cobertura por pacote e por classe, e as linhas cobertas e não cobertas de cada arquivo. As classes `*Application` ficam de fora, porque só sobem o Spring.
+
 ## Tecnologias
 
 Java, Spring Boot, JPA, PostgreSQL, Docker Compose, JUnit, Mockito, Swagger/OpenAPI.
