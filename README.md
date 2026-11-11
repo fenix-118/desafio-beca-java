@@ -83,6 +83,18 @@ Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, tr
 
 > Até a integração com a API Mock (pedido 2), o saldo e os limites vêm de `conta.padrao` no `application.yml` do MS2.
 
+> O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar. Pela IDE, suba o MS1 antes (endereço em `MS1_BASE_URL`, padrão `http://localhost:8081`); no Compose, o MS2 só sobe depois que o healthcheck do MS1 responde `UP`.
+
+| Situação no MS1 | Resposta do MS2 | Grava? |
+|---|---|---|
+| Dono não existe | 404 | Não |
+| MS1 fora do ar ao conferir o **dono** | 503 | Não |
+| Destino não existe | 201, `REJEITADA` com `DESTINO_INEXISTENTE` | Sim |
+| MS1 fora do ar ao conferir o **destino** | 201, `REJEITADA` com `SERVICO_USUARIOS_INDISPONIVEL` | Sim |
+| MS1 responde outro 4xx (ex.: 403) | 502, com `log.error` do status | Não |
+
+**Por que o dono e o destino são tratados diferente:** uma transação só existe se tiver um dono confirmado. Sem conseguir falar com o MS1 na checagem do dono, não há de quem registrar a tentativa, então a resposta é 503 e o cliente tenta de novo. Na checagem do destino o dono já foi confirmado, então vale a mesma regra do saldo: a transação não é aprovada às cegas e fica gravada como `REJEITADA` com o motivo.
+
 ## Tecnologias
 
 Java, Spring Boot, JPA, PostgreSQL, Docker Compose, JUnit, Mockito, Swagger/OpenAPI.

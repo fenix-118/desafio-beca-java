@@ -36,6 +36,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # A imagem do JRE não tem curl: o bash abre a porta e confere o "UP" do actuator.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   ms2-transacoes:
     build: ./ms2-transacoes
@@ -47,6 +54,7 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?defina POSTGRES_USER no arquivo .env}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
       MOCKAPI_BASE_URL: ${MOCKAPI_BASE_URL:-}
+      MS1_BASE_URL: http://ms1-usuarios:8081
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -55,6 +63,8 @@ services:
       - beca-net
     depends_on:
       postgres:
+        condition: service_healthy
+      ms1-usuarios:
         condition: service_healthy
 
 networks:

@@ -1,7 +1,12 @@
 package com.beca.transacoes.infrastructure.adapter.in.web;
 
+import com.beca.transacoes.application.port.out.FalhaIntegracaoUsuariosException;
+import com.beca.transacoes.application.port.out.ServicoUsuariosIndisponivelException;
 import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
+import com.beca.transacoes.domain.exception.UsuarioNaoEncontradoException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -17,12 +22,38 @@ import java.util.Map;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    static final String USUARIOS_INDISPONIVEL =
+            "Serviço de usuários indisponível; tente novamente em instantes.";
+
+    static final String FALHA_INTEGRACAO_USUARIOS =
+            "Erro na integração com o serviço de usuários; a transação não foi registrada.";
+
     static final String CORPO_ILEGIVEL =
             "Corpo da requisição inválido: confira o JSON e os valores aceitos em 'tipo' e 'categoria'.";
 
     @ExceptionHandler(TransacaoNaoEncontradaException.class)
     public ProblemDetail naoEncontrada(TransacaoNaoEncontradaException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(UsuarioNaoEncontradoException.class)
+    public ProblemDetail usuarioNaoEncontrado(UsuarioNaoEncontradoException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    /** MS1 fora do ar: nada é gravado e o cliente pode tentar de novo. O detalhe técnico fica só no log. */
+    @ExceptionHandler(ServicoUsuariosIndisponivelException.class)
+    public ProblemDetail usuariosIndisponivel(ServicoUsuariosIndisponivelException ex) {
+        log.warn("MS1 indisponível: {}", ex.getCause() == null ? ex.getMessage() : ex.getCause().getClass().getSimpleName());
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, USUARIOS_INDISPONIVEL);
+    }
+
+    /** 4xx inesperado do MS1: o log.error com o status já foi feito no adapter. */
+    @ExceptionHandler(FalhaIntegracaoUsuariosException.class)
+    public ProblemDetail falhaIntegracaoUsuarios(FalhaIntegracaoUsuariosException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, FALHA_INTEGRACAO_USUARIOS);
     }
 
     @ExceptionHandler(DadosInvalidosException.class)

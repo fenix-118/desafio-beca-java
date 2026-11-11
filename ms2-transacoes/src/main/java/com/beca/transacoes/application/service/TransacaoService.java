@@ -5,9 +5,12 @@ import com.beca.transacoes.application.port.in.ListarTransacoesUseCase;
 import com.beca.transacoes.application.port.in.RegistrarTransacaoUseCase;
 import com.beca.transacoes.application.port.out.ContaPort;
 import com.beca.transacoes.application.port.out.ServicoSaldoIndisponivelException;
+import com.beca.transacoes.application.port.out.ServicoUsuariosIndisponivelException;
 import com.beca.transacoes.application.port.out.TransacaoRepositoryPort;
+import com.beca.transacoes.application.port.out.UsuarioPort;
 import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
+import com.beca.transacoes.domain.exception.UsuarioNaoEncontradoException;
 import com.beca.transacoes.domain.model.MensagensTransacao;
 import com.beca.transacoes.domain.model.MotivoRejeicao;
 import com.beca.transacoes.domain.model.SituacaoConta;
@@ -21,6 +24,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public class TransacaoService
@@ -31,11 +35,14 @@ public class TransacaoService
 
     private final TransacaoRepositoryPort repositorio;
     private final ContaPort conta;
+    private final UsuarioPort usuarios;
     private final Clock relogio;
 
-    public TransacaoService(TransacaoRepositoryPort repositorio, ContaPort conta, Clock relogio) {
+    public TransacaoService(TransacaoRepositoryPort repositorio, ContaPort conta, UsuarioPort usuarios,
+                            Clock relogio) {
         this.repositorio = repositorio;
         this.conta = conta;
+        this.usuarios = usuarios;
         this.relogio = relogio;
     }
 
@@ -44,7 +51,16 @@ public class TransacaoService
         Transacao transacao = Transacao.solicitar(comando.usuarioId(), comando.tipo(), comando.valor(),
                 comando.categoria(), comando.usuarioDestinoId(), comando.descricao());
 
-        if (transacao.precisaDeSaldo()) {
+        // Sem dono confirmado no MS1 não existe transação válida para gravar: MS1 fora do ar aqui vira 503.
+        if (!usuarios.existe(transacao.getUsuarioId())) {
+            throw new UsuarioNaoEncontradoException(transacao.getUsuarioId());
+        }
+
+        Optional<MotivoRejeicao> problemaNoDestino = conferirDestino(transacao);
+        if (problemaNoDestino.isPresent()) {
+            // O dono já foi confirmado: a tentativa fica registrada, rejeitada com o motivo.
+            transacao.rejeitar(problemaNoDestino.get());
+        } else if (transacao.precisaDeSaldo()) {
             avaliarSaida(transacao);
         } else {
             transacao.avaliar(null, null);
@@ -74,6 +90,22 @@ public class TransacaoService
                 : EnumSet.of(consulta.tipo());
 
         return repositorio.listar(consulta.usuarioId(), inicio, fim, tipos);
+    }
+
+    /**
+     * Confere o destino de uma transferência no MS1. Mesma regra do saldo (dúvida 2): com o MS1 fora do ar,
+     * a transação não é aprovada às cegas; fica REJEITADA com motivo e é gravada.
+     */
+    private Optional<MotivoRejeicao> conferirDestino(Transacao transacao) {
+        Long destino = transacao.getUsuarioDestinoId();
+        if (destino == null) {
+            return Optional.empty();
+        }
+        try {
+            return usuarios.existe(destino) ? Optional.empty() : Optional.of(MotivoRejeicao.DESTINO_INEXISTENTE);
+        } catch (ServicoUsuariosIndisponivelException e) {
+            return Optional.of(MotivoRejeicao.SERVICO_USUARIOS_INDISPONIVEL);
+        }
     }
 
     private void avaliarSaida(Transacao transacao) {
