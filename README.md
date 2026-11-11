@@ -88,13 +88,13 @@ Para conferir que os dados sobreviveram: `curl -s http://localhost:8081/usuarios
 
 ### 6. Dados de exemplo para a demonstração
 
-Com os serviços no ar, o script abaixo cadastra os usuários do `samples/usuarios-exemplo.csv` no MS1 e registra no MS2 uma sequência de transações de um usuário que tenha conta na API Mock:
+Com os serviços no ar, o script abaixo faz login no MS1, cadastra os usuários do `samples/usuarios-exemplo.csv` e registra no MS2 uma sequência de transações do usuário do login:
 
 ```bash
-bash docker/demo/carregar-dados-demo.sh 3 4
+DEMO_EMAIL=email.do.usuario@example.com bash docker/demo/carregar-dados-demo.sh 4
 ```
 
-Os argumentos são o id do usuário que faz as transações (padrão `3`) e o id do destino da transferência (padrão `4`); os dois precisam existir no MS1 e ter conta na Mock. O script mostra o status de cada transação e termina com o saldo e o resumo de despesas do mês. Rodar de novo cria transações novas (o CSV repetido só gera falhas de e-mail já cadastrado). Os endereços podem ser trocados por `MS1_URL` e `MS2_URL`.
+A senha é pedida na hora (ou vem de `DEMO_SENHA`), e não fica no arquivo nem no histórico do terminal. O argumento é o id do destino da transferência (padrão `4`); o usuário do login e o destino precisam ter conta na Mock. O script mostra o status de cada transação e termina com o saldo e o resumo de despesas do mês. Rodar de novo cria transações novas (o CSV repetido só gera falhas de e-mail já cadastrado). Os endereços podem ser trocados por `MS1_URL` e `MS2_URL`.
 
 ### Serviços
 
@@ -221,6 +221,28 @@ cd ../ms2-transacoes && mvn clean test
 
 Pelo IntelliJ: painel **Maven** → módulo → **Lifecycle** → `clean` + `test`. Cada build gera o relatório de cobertura do JaCoCo em `target/site/jacoco/index.html` (abra no navegador): a cobertura por pacote e por classe, e as linhas cobertas e não cobertas de cada arquivo. As classes `*Application` ficam de fora, porque só sobem o Spring.
 
+## Login (MS1 e MS2)
+
+Todas as rotas do MS2 pedem **login básico** (HTTP Basic) com o e-mail e a senha cadastrados no MS1. A cada requisição, o MS2 confere as credenciais no MS1 pelo nome do serviço; o MS2 nunca guarda senha.
+
+| Rota | Quem acessa |
+|---|---|
+| MS1 `POST /autenticacao` | Aberta: confere e-mail e senha e devolve `id`, `nome` e `email` (sem senha) |
+| MS1 `POST /usuarios` (cadastro) e `/usuarios/importacao` | Abertas |
+| MS2 `/transacoes`, `/contas/{usuarioId}/saldo`, `/despesas/resumo` | Login obrigatório; cada usuário só vê e registra as **próprias** transações |
+| `/swagger-ui.html`, `/v3/api-docs`, `/actuator/health` (MS1 e MS2) | Abertas: documentação e health check do Compose |
+
+| Situação | Resposta |
+|---|---|
+| Sem login, ou login em formato errado | 401, com `WWW-Authenticate: Basic` |
+| E-mail inexistente ou senha errada | 401 "E-mail ou senha inválidos." (a mesma mensagem nos dois casos) |
+| `usuarioId` de outro usuário, ou transação de outro usuário | 403 |
+| MS1 fora do ar ao conferir o login | 503 |
+
+**No Swagger do MS2:** clique em **Authorize**, informe o e-mail e a senha do MS1 e depois use o **Try it out** normalmente. **Pelo terminal:** `curl -u email@example.com:senha "http://localhost:8082/contas/3/saldo"`.
+
+> **Limitação conhecida:** as rotas de usuários do MS1 (`GET`, `PUT` e `DELETE /usuarios/{id}`) continuam abertas, porque o MS2 as consulta de serviço para serviço para conferir o dono e o destino das transações. Em produção, essas chamadas usariam uma credencial própria do serviço (ou ficariam só na rede interna), e as rotas de usuários exigiriam o login do próprio usuário.
+
 ## Segurança e segredos
 
 Revisão feita em 11/11/2026 (tarefa 8.7), em **todo o histórico** do Git, não só na versão atual:
@@ -232,7 +254,7 @@ Revisão feita em 11/11/2026 (tarefa 8.7), em **todo o histórico** do Git, não
 | URL real da API Mock (com o id do projeto) | Nenhuma; fica só no `.env` |
 | `.env.example` | Só valores de exemplo (`troque_aqui`, `SEU_ID`) |
 | Senhas nos CSVs de `samples/` e nos testes | Fictícias, de propósito (`Exemplo#2026a`, `Senha@123`) |
-| Senha nas respostas e nos logs | Fora: a resposta de usuário não tem senha, o `toString` dos pedidos mascara a senha e o log de violação no banco grava só o nome da restrição |
+| Senha nas respostas e nos logs | Fora: nem a resposta de usuário nem a do login têm senha, o `toString` dos pedidos mascara a senha, o log de violação no banco grava só o nome da restrição, e o login (no MS1 e no filtro do MS2) não registra e-mail nem senha |
 | Actuator | Só `/actuator/health` exposto |
 | Containers | Portas só em `127.0.0.1`, `no-new-privileges` e `cap_drop: ALL` |
 
