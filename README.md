@@ -221,6 +221,22 @@ Exemplo de resposta:
 }
 ```
 
+## Banco de dados e migrações (Flyway)
+
+O esquema de cada serviço é criado pelas migrações do Flyway, em `src/main/resources/db/migration`, e o Hibernate só **confere** se as entidades batem com ele (`ddl-auto: validate`). Assim, a estrutura do banco fica versionada no Git e muda só por migração revisada.
+
+| Serviço | Migração | Cria |
+|---|---|---|
+| MS1 | `V1__cria_tabela_usuarios.sql` | `usuarios`, com a restrição `uk_usuarios_email` |
+| MS2 | `V1__cria_tabela_transacoes.sql` | `transacoes`, já com as colunas do câmbio (`cotacao_usd`, `cotacao_eur` e as datas), as restrições dos enums e o índice `idx_transacoes_usuario_data` |
+
+| Situação do banco | O que o Flyway faz |
+|---|---|
+| Vazio (clone novo ou `docker compose down -v`) | Roda a `V1` e cria as tabelas |
+| Já tinha as tabelas, criadas pelo antigo `ddl-auto: update` | Registra a `V1` como aplicada (**baseline**) sem rodá-la; os dados ficam como estão |
+
+A `V1` foi escrita a partir do esquema real (`pg_dump -s`), com os mesmos tipos e nomes de restrição. As colunas do câmbio (pedido 3) entram na mesma `V1`, e não num `ALTER TABLE` separado, porque nenhum banco tinha rodado migração antes: a `V1` descreve o esquema completo de hoje, e os bancos que já existiam recebem o baseline. Uma mudança futura no banco entra como `V2__...sql`, nunca editando a `V1`. Para ver o histórico: `docker exec beca-postgres psql -U beca -d transacoes_db -c "select version, description, success from flyway_schema_history"`.
+
 ## Testes e cobertura
 
 ```bash
