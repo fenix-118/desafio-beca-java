@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Carrega dados de exemplo para a demonstração (tarefa 9.3).
-# Uso: ./docker/demo/carregar-dados-demo.sh [usuarioId] [usuarioDestinoId]
-# Os dois usuários precisam existir no MS1 e ter conta na API Mock.
+# Uso: DEMO_EMAIL=ana.souza@example.com bash docker/demo/carregar-dados-demo.sh [usuarioDestinoId]
+# A senha vem de DEMO_SENHA ou é pedida na hora (não fica no arquivo nem no histórico).
+# O usuário do login e o destino precisam existir no MS1 e ter conta na API Mock.
 set -euo pipefail
 
-USUARIO="${1:-3}"
-DESTINO="${2:-4}"
+DESTINO="${1:-4}"
+DEMO_EMAIL="${DEMO_EMAIL:?defina DEMO_EMAIL com o e-mail do usuário da demo}"
 MS1_URL="${MS1_URL:-http://localhost:8081}"
 MS2_URL="${MS2_URL:-http://localhost:8082}"
 RAIZ="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -18,6 +19,23 @@ for url in "$MS1_URL" "$MS2_URL"; do
   fi
   echo "   $url: UP"
 done
+
+# Login (tarefa 6.1): o MS1 confere a senha e devolve o id do usuário.
+if [ -z "${DEMO_SENHA-}" ]; then
+  read -rsp "Senha de $DEMO_EMAIL: " DEMO_SENHA
+  echo
+fi
+echo "== MS1: login de $DEMO_EMAIL"
+login="$(curl -sS -w ' HTTP_%{http_code}' -X POST "$MS1_URL/autenticacao" \
+  -H 'Content-Type: application/json' -d "{\"email\": \"$DEMO_EMAIL\", \"senha\": \"$DEMO_SENHA\"}")"
+if [ "${login##* HTTP_}" != "200" ]; then
+  echo "   Login recusado (HTTP ${login##* HTTP_}): confira o e-mail e a senha."
+  exit 1
+fi
+USUARIO="$(grep -o '"id":[0-9]*' <<< "$login" | head -1 | cut -d: -f2)"
+echo "   autenticado como usuário $USUARIO"
+# Login básico em todas as chamadas ao MS2 (tarefa 6.2).
+LOGIN=(-u "$DEMO_EMAIL:$DEMO_SENHA")
 
 echo "== MS1: importando samples/usuarios-exemplo.csv"
 curl -sS -X POST "$MS1_URL/usuarios/importacao" -F "arquivo=@$RAIZ/samples/usuarios-exemplo.csv"
@@ -40,13 +58,13 @@ TRANSACOES=(
 # Consultar o saldo antes aquece a conexão e confirma que o usuário tem conta na Mock.
 echo "== MS2: conferindo a conta do usuário $USUARIO na API Mock"
 for tentativa in 1 2 3; do
-  codigo_saldo="$(curl -sS -o /dev/null -w '%{http_code}' "$MS2_URL/contas/$USUARIO/saldo" || true)"
+  codigo_saldo="$(curl -sS -o /dev/null -w '%{http_code}' "${LOGIN[@]}" "$MS2_URL/contas/$USUARIO/saldo" || true)"
   [ "$codigo_saldo" = "200" ] && break
   echo "   tentativa $tentativa: HTTP $codigo_saldo"
   sleep 2
 done
 if [ "$codigo_saldo" != "200" ]; then
-  echo "   O saldo do usuário $USUARIO não respondeu 200 (HTTP $codigo_saldo): confira se ele existe no MS1 e tem conta na Mock."
+  echo "   O saldo do usuário $USUARIO não respondeu 200 (HTTP $codigo_saldo): confira se ele tem conta na Mock."
   exit 1
 fi
 echo "   conta encontrada"
@@ -59,7 +77,7 @@ for linha in "${TRANSACOES[@]}"; do
   [ -n "$destino" ] && corpo="$corpo, \"usuarioDestinoId\": $destino"
   corpo="$corpo, \"descricao\": \"$descricao\"}"
 
-  resposta="$(curl -sS -w ' HTTP_%{http_code}' -X POST "$MS2_URL/transacoes" \
+  resposta="$(curl -sS -w ' HTTP_%{http_code}' "${LOGIN[@]}" -X POST "$MS2_URL/transacoes" \
     -H 'Content-Type: application/json' -d "$corpo")"
   codigo="${resposta##* HTTP_}"
   status="$(grep -o '"status":"[A-Z]*"' <<< "$resposta" | head -1 | cut -d'"' -f4 || true)"
@@ -72,8 +90,8 @@ for linha in "${TRANSACOES[@]}"; do
 done
 
 echo "== MS2: saldo do usuário $USUARIO"
-curl -sS "$MS2_URL/contas/$USUARIO/saldo"
+curl -sS "${LOGIN[@]}" "$MS2_URL/contas/$USUARIO/saldo"
 echo
 echo "== MS2: resumo de despesas do mês atual"
-curl -sS "$MS2_URL/despesas/resumo?usuarioId=$USUARIO"
+curl -sS "${LOGIN[@]}" "$MS2_URL/despesas/resumo?usuarioId=$USUARIO"
 echo
