@@ -236,6 +236,28 @@ Revisão feita em 11/11/2026 (tarefa 8.7), em **todo o histórico** do Git, não
 | Actuator | Só `/actuator/health` exposto |
 | Containers | Portas só em `127.0.0.1`, `no-new-privileges` e `cap_drop: ALL` |
 
+### Como refazer a revisão
+
+Os comandos abaixo varrem **todos os commits de todas as branches** (`--all`), não só a versão atual dos arquivos. Rode na raiz do projeto, no Git Bash:
+
+```bash
+# 1. Arquivos de segredo que já foram versionados alguma vez (o esperado é não aparecer nada)
+git log --all --name-only --format= | sort -u | grep -iE '\.env$|\.pem$|\.key$|\.p12$|\.jks$|secret|credential'
+
+# 2. Senha, token ou chave com valor literal em arquivos de configuração (ignora ${...} e troque_aqui)
+git log --all -p -- '*.yml' '*.yaml' '*.properties' '*.env*' 'docker-compose*' '*.json' | grep -E '^\+' \
+  | grep -iE '(password|senha|secret|token|api[_-]?key)[a-z_]*["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[^"'"'"'$?{[:space:]][^"'"'"'[:space:]]{5,}' \
+  | grep -viE 'troque_aqui'
+
+# 3. URL real da API Mock (com o id do projeto) em algum commit
+git log --all -p | grep -oE '[a-z0-9]{16,}\.mockapi\.io' | sort -u
+
+# 4. Chaves privadas
+git log --all -p | grep -cE '^\+-----BEGIN [A-Z ]*PRIVATE KEY-----'
+```
+
+Resultado em 11/11/2026: **nada** nos comandos 1, 2 e 3, e `0` no 4. O comando 2 foi conferido com um caso de teste (`password: minhaSenha123` é encontrado; `password: ${...}` e `troque_aqui` não). Senhas em código Java e nos testes ficam a cargo do hook abaixo.
+
 ### Hook de pre-commit versionado
 
 O `.githooks/pre-commit` barra o commit quando encontra um arquivo de segredo, uma senha literal em configuração, uma chave privada ou a URL real da Mock. Ele aceita placeholders (`${...}`) e os valores de exemplo, e ignora `src/test/` e `samples/`. Ative uma vez em cada clone:
