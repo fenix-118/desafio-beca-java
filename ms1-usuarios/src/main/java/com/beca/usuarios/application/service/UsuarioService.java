@@ -11,6 +11,7 @@ import com.beca.usuarios.domain.exception.CredenciaisInvalidasException;
 import com.beca.usuarios.domain.exception.DadosInvalidosException;
 import com.beca.usuarios.domain.exception.EmailJaCadastradoException;
 import com.beca.usuarios.domain.exception.UsuarioNaoEncontradoException;
+import com.beca.usuarios.domain.model.MensagensUsuario;
 import com.beca.usuarios.domain.model.Usuario;
 
 import java.nio.charset.StandardCharsets;
@@ -26,11 +27,10 @@ public class UsuarioService implements
         AutenticarUsuarioUseCase {
 
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
-    private static final int NOME_MAX = 120;
-    private static final int EMAIL_MAX = 160;
-    private static final int SENHA_MIN = 8;
-    /** Limite do BCrypt: ele considera no máximo 72 bytes da senha. */
-    private static final int SENHA_MAX_BYTES = 72;
+    private static final int NOME_MAX = MensagensUsuario.NOME_MAX;
+    private static final int EMAIL_MAX = MensagensUsuario.EMAIL_MAX;
+    private static final int SENHA_MIN = MensagensUsuario.SENHA_MIN;
+    private static final int SENHA_MAX_BYTES = MensagensUsuario.SENHA_MAX_BYTES;
 
     private final UsuarioRepositoryPort repositorio;
     private final SenhaEncoderPort senhaEncoder;
@@ -108,38 +108,38 @@ public class UsuarioService implements
 
     private String validarNome(String nome) {
         if (nome == null || nome.isBlank()) {
-            throw new DadosInvalidosException("O campo 'nome' é obrigatório.");
+            throw new DadosInvalidosException(MensagensUsuario.NOME_OBRIGATORIO);
         }
         String limpo = nome.trim();
         if (limpo.length() > NOME_MAX) {
-            throw new DadosInvalidosException("O campo 'nome' deve ter no máximo " + NOME_MAX + " caracteres.");
+            throw new DadosInvalidosException(MensagensUsuario.NOME_TAMANHO);
         }
         return limpo;
     }
 
     private String normalizarEmail(String email) {
         if (email == null || email.isBlank()) {
-            throw new DadosInvalidosException("O campo 'email' é obrigatório.");
+            throw new DadosInvalidosException(MensagensUsuario.EMAIL_OBRIGATORIO);
         }
         String limpo = email.trim().toLowerCase(Locale.ROOT);
-        if (limpo.length() > EMAIL_MAX || !EMAIL.matcher(limpo).matches()) {
-            throw new DadosInvalidosException("E-mail inválido.");
+        if (limpo.length() > EMAIL_MAX) {
+            throw new DadosInvalidosException(MensagensUsuario.EMAIL_TAMANHO);
+        }
+        if (!EMAIL.matcher(limpo).matches()) {
+            throw new DadosInvalidosException(MensagensUsuario.EMAIL_INVALIDO);
         }
         return limpo;
     }
 
     private void validarSenha(String senha) {
         if (senha == null || senha.isBlank()) {
-            throw new DadosInvalidosException("O campo 'senha' é obrigatório.");
+            throw new DadosInvalidosException(MensagensUsuario.SENHA_OBRIGATORIA);
         }
         if (senha.length() < SENHA_MIN) {
-            throw new DadosInvalidosException(
-                    "A senha deve ter no mínimo " + SENHA_MIN + " caracteres.");
+            throw new DadosInvalidosException(MensagensUsuario.SENHA_CURTA);
         }
         if (senha.getBytes(StandardCharsets.UTF_8).length > SENHA_MAX_BYTES) {
-            throw new DadosInvalidosException(
-                    "A senha é longa demais: o limite é de " + SENHA_MAX_BYTES
-                            + " bytes, e letras acentuadas ou símbolos ocupam mais de um byte cada.");
+            throw new DadosInvalidosException(MensagensUsuario.SENHA_LONGA);
         }
     }
 }
