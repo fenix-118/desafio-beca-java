@@ -102,6 +102,26 @@ class DespesaServiceTest {
     }
 
     @Test
+    void aceitaUmAnoInteiro() {
+        when(repositorio.listar(3L, Instant.parse("2025-01-01T03:00:00Z"), Instant.parse("2026-01-01T03:00:00Z"), SAIDAS))
+                .thenReturn(List.of());
+
+        ResumoDoPeriodo r = service.consultar(
+                new ConsultarDespesasQuery(3L, LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31)));
+
+        assertThat(r.fim()).isEqualTo(LocalDate.of(2025, 12, 31));
+    }
+
+    @Test
+    void recusaPeriodoMaiorQueUmAno() {
+        assertThatThrownBy(() -> service.consultar(
+                new ConsultarDespesasQuery(3L, LocalDate.of(2020, 1, 1), LocalDate.of(2026, 11, 30))))
+                .isInstanceOf(DadosInvalidosException.class)
+                .hasMessage(DespesaService.PERIODO_LONGO_DEMAIS);
+        verifyNoInteractions(repositorio);
+    }
+
+    @Test
     void recusaUsuarioInvalido() {
         assertThatThrownBy(() -> service.consultar(
                 new ConsultarDespesasQuery(0L, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))))

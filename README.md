@@ -173,6 +173,9 @@ O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar. Pela IDE, suba o
 | O dia e o mês são os de **São Paulo** | Mesma regra do limite diário: uma compra às 22h do dia 31 conta no dia 31, mesmo sendo dia 1º em UTC |
 | Sem `inicio` e `fim`, o período é o **mês atual** (do dia 1º ao último dia) | O caso mais comum não precisa de parâmetros; a resposta mostra o período usado |
 | Só uma das datas → 400; `inicio` depois de `fim` → 400 | Evita um período ambíguo |
+| Período de no máximo 366 dias → senão 400 | Um intervalo de vários anos carregaria todas as transações na memória de uma vez |
+
+> **Pendência de segurança:** neste PR, `GET /despesas/resumo` ainda não exige login, como as outras rotas do MS2: qualquer pessoa consulta o resumo de outro usuário trocando o `usuarioId`. A autenticação, com o `usuarioId` conferido contra o usuário do login, entra no PR do pedido 6 (login).
 
 Exemplo de resposta:
 
