@@ -8,6 +8,21 @@ Projeto do Desafio Beca Java (Beca Bradesco · NTT DATA).
 - **MS2 Transações:** depósito, retirada, transferência e compra, em arquitetura hexagonal
 - **Integrações:** API Mock (saldo e limites) e BrasilAPI (câmbio)
 
+## O que está pronto
+
+| Entrega | Onde ler mais |
+|---|---|
+| Cadastro, consulta, alteração e exclusão de usuários, importação por CSV e senha com BCrypt (MS1) | [Validação de usuários](#validação-de-usuários-ms1) |
+| Depósito, retirada, transferência e compra com saldo, limite por transação e limite diário (MS2) | [Transações](#transações-ms2) |
+| Câmbio do dia (USD e EUR) guardado em cada transação, com cache e pausa quando a BrasilAPI cai | [Câmbio](#câmbio-brasilapi) |
+| Análise de despesas por categoria, dia e mês | [Análise de despesas](#análise-de-despesas-ms2) |
+| Relatório CSV das transações, que abre direto no Excel em português | [Relatório CSV](#relatório-csv-ms2) |
+| Login (HTTP Basic) e dono dos dados: cada usuário só vê o que é seu | [Login](#login-ms1-e-ms2) |
+| Docker Compose com healthchecks, script de dados para a demonstração e Swagger | [Como rodar](#como-rodar-o-projeto) |
+| Flyway, testes com JaCoCo, `@DataJpaTest` e revisão de segredos com hook de pre-commit | [Testes](#testes-e-cobertura) e [Segurança](#segurança-e-segredos) |
+
+Ficou de fora, documentado: o crédito no destino da transferência (a transferência debita só quem envia), a concorrência entre saídas simultâneas e o limite de tentativas de login. O detalhe e a solução proposta estão em [Limitações conhecidas](#limitações-conhecidas-e-como-resolveríamos) e em [Login](#login-ms1-e-ms2).
+
 ## Como rodar o projeto
 
 ### Pré-requisitos
@@ -125,6 +140,7 @@ Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação
 | `GET /transacoes?usuarioId=1&inicio=2026-11-01&fim=2026-11-30&tipo=COMPRA` | Lista as transações do usuário; período e tipo são opcionais |
 | `GET /contas/{usuarioId}/saldo` | Saldo e limites lidos da API Mock no momento, o gasto de hoje e quanto ainda pode sair |
 | `GET /despesas/resumo?usuarioId=3&inicio=2026-11-01&fim=2026-11-30` | Análise de despesas: total por categoria, por dia e por mês, com o total geral; sem datas, usa o mês atual |
+| `GET /transacoes/relatorio?inicio=2026-11-01&fim=2026-11-30` | Baixa o relatório CSV das transações do usuário do login; sem datas, usa o mês atual |
 
 Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, transferência e compra) exigem categoria; transferência exige `usuarioDestinoId`; saídas são conferidas contra saldo, limite por transação e limite diário (dia no fuso de São Paulo); depósito não tem limite nem exige saldo, mas precisa da conta na Mock para ser creditado: sem conta, ou com a Mock fora do ar, ele é rejeitado.
 
@@ -211,6 +227,39 @@ Exemplo de resposta:
 }
 ```
 
+## Relatório CSV (MS2)
+
+`GET /transacoes/relatorio` baixa um arquivo `transacoes-<inicio>-a-<fim>.csv` com todas as transações do usuário do login no período, **aprovadas e rejeitadas**, da mais antiga para a mais recente. Não há `usuarioId` na URL: o relatório é sempre de quem fez o login, então não dá para pedir o de outra pessoa.
+
+O período segue as mesmas regras da análise de despesas (o código é o mesmo, `PeriodoSaoPaulo`): sem datas, o mês atual; só uma data, `inicio` depois de `fim` ou mais de 366 dias → 400.
+
+Colunas: `Data; Id; Tipo; Categoria; Descrição; Usuário destino; Valor (BRL); Status; Motivo da rejeição`.
+
+| Detalhe do arquivo | Por quê |
+|---|---|
+| Separador `;` | No Brasil a vírgula é o separador decimal, então o Excel em português espera `;` |
+| BOM UTF-8 no início | Sem ele, o Excel abre o arquivo como ANSI e troca os acentos por símbolos |
+| Valor com vírgula decimal, sem milhar (`1500,00`) | O Excel em português lê como número, e dá para somar a coluna |
+| Data `dd/MM/aaaa HH:mm` no fuso de São Paulo | O Excel lê como data e hora; é o mesmo dia usado no limite diário |
+| Campo com `;`, aspas ou quebra de linha vai entre aspas | Uma descrição com `;` não quebra as colunas |
+| Texto que começa com `=`, `+`, `-` ou `@` ganha um `'` na frente | A descrição é texto livre: sem isso, uma descrição como `=HYPERLINK(...)` viraria fórmula ao abrir (injeção de CSV, OWASP) |
+
+**No Swagger:** **Authorize** com o login, depois **Try it out** em `GET /transacoes/relatorio` e **Download file**. **Pelo terminal:** `curl -u email@example.com:senha -OJ "http://localhost:8082/transacoes/relatorio?inicio=2026-11-01&fim=2026-11-30"` (o `-OJ` salva com o nome que o servidor manda).
+
+Conferido abrindo o arquivo como planilha em português: a data vira data, o valor vira número e a descrição com `=` fica como texto.
+
+## Validação de usuários (MS1)
+
+As regras de nome, e-mail e senha ficam num lugar só (`MensagensUsuario`), com os limites e as mensagens. O `@Valid` dos DTOs e o `UsuarioService` usam as mesmas constantes, então a mensagem de erro é igual pela API e pela importação de CSV, e um teste (`MensagensDeValidacaoTest`) confere isso regra por regra.
+
+| Campo | Regra | Mensagem |
+|---|---|---|
+| `nome` | Obrigatório, até 120 caracteres | "O campo 'nome' é obrigatório." / "... no máximo 120 caracteres." |
+| `email` | Obrigatório, formato válido, até 160 caracteres, único | "E-mail inválido." / "... no máximo 160 caracteres." |
+| `senha` | Obrigatória, no mínimo 8 caracteres e no máximo 72 bytes | "A senha deve ter no mínimo 8 caracteres." / "A senha é longa demais: o limite é de 72 bytes..." |
+
+O limite da senha é em **bytes**, não em caracteres, porque o BCrypt só usa os primeiros 72 bytes: uma senha maior teria o final ignorado sem ninguém saber. Letras acentuadas ocupam 2 bytes, por isso a conferência fica no service, que mede os bytes, e não no `@Size` do DTO.
+
 ## Banco de dados e migrações (Flyway)
 
 O esquema de cada serviço é criado pelas migrações do Flyway, em `src/main/resources/db/migration`, e o Hibernate só **confere** se as entidades batem com ele (`ddl-auto: validate`). Assim, a estrutura do banco fica versionada no Git e muda só por migração revisada.
@@ -248,7 +297,7 @@ Todas as rotas do MS2 pedem **login básico** (HTTP Basic) com o e-mail e a senh
 | MS1 `POST /usuarios` (cadastro) e `/usuarios/importacao` | Abertas |
 | MS1 `GET`, `PUT` e `DELETE /usuarios/{id}` | Login do **próprio** usuário; o `GET` também aceita o MS2, com o token de serviço (`X-Servico-Token`) |
 | MS1 `GET /usuarios` (lista de todos) | Removida: expunha o nome e o e-mail de todos os usuários |
-| MS2 `/transacoes`, `/contas/{usuarioId}/saldo`, `/despesas/resumo` | Login obrigatório; cada usuário só vê e registra as **próprias** transações |
+| MS2 `/transacoes`, `/transacoes/relatorio`, `/contas/{usuarioId}/saldo`, `/despesas/resumo` | Login obrigatório; cada usuário só vê e registra as **próprias** transações (o relatório usa o usuário do login) |
 | `/swagger-ui.html`, `/v3/api-docs`, `/actuator/health` (MS1 e MS2) | Abertas: documentação e health check do Compose |
 
 | Situação | Resposta |
