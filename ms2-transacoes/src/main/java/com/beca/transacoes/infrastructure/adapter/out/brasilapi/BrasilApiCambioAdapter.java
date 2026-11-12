@@ -6,10 +6,14 @@ import com.beca.transacoes.domain.model.MoedaEstrangeira;
 import com.beca.transacoes.infrastructure.adapter.out.brasilapi.RespostaCotacaoBrasilApi.Boletim;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -23,6 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * - fim de semana e feriado devolvem a cotação do dia útil anterior, então a data guardada é a da resposta;
  * - usa o boletim "FECHAMENTO PTAX" (valor de venda), a referência oficial do Banco Central.
  * Cotação de um dia passado não muda: fica em cache na memória para não repetir a chamada.
+ * Se a BrasilAPI estiver fora do ar (sem conexão, tempo limite ou 5xx), as consultas ficam em pausa por alguns
+ * minutos: nesse tempo a conversão sai indisponível na hora, sem esperar o tempo limite a cada transação.
  */
 public class BrasilApiCambioAdapter implements CambioPort {
 
@@ -31,13 +37,23 @@ public class BrasilApiCambioAdapter implements CambioPort {
 
     private static final Logger log = LoggerFactory.getLogger(BrasilApiCambioAdapter.class);
 
+    static final Duration PAUSA_PADRAO = Duration.ofMinutes(5);
+
     private final RestClient brasilApi;
     private final Clock relogio;
+    private final Duration pausaAposFalha;
     private final Map<String, Cotacao> cache = new ConcurrentHashMap<>();
+    /** Até quando não vale a pena chamar a BrasilAPI, depois de uma falha de conexão. */
+    private volatile Instant pausadaAte = Instant.MIN;
 
     public BrasilApiCambioAdapter(RestClient brasilApi, Clock relogio) {
+        this(brasilApi, relogio, PAUSA_PADRAO);
+    }
+
+    public BrasilApiCambioAdapter(RestClient brasilApi, Clock relogio, Duration pausaAposFalha) {
         this.brasilApi = brasilApi;
         this.relogio = relogio;
+        this.pausaAposFalha = pausaAposFalha;
     }
 
     @Override
@@ -48,6 +64,10 @@ public class BrasilApiCambioAdapter implements CambioPort {
         Cotacao emCache = cache.get(chave);
         if (emCache != null) {
             return Optional.of(emCache);
+        }
+
+        if (relogio.instant().isBefore(pausadaAte)) {
+            return Optional.empty();
         }
 
         Optional<Cotacao> cotacao = consultar(moeda, dataConsultada);
@@ -68,8 +88,14 @@ public class BrasilApiCambioAdapter implements CambioPort {
                     .uri("/cambio/v1/cotacao/{moeda}/{data}", moeda.name(), data.toString())
                     .retrieve()
                     .body(RespostaCotacaoBrasilApi.class);
+        } catch (ResourceAccessException | HttpServerErrorException e) {
+            // Fora do ar, tempo limite ou 5xx: pausa as próximas consultas para não repetir a espera.
+            pausadaAte = relogio.instant().plus(pausaAposFalha);
+            log.warn("BrasilAPI indisponível para {} em {}: conversão indisponível e consultas em pausa por {} ({})",
+                    moeda, data, pausaAposFalha, causaRaiz(e));
+            return Optional.empty();
         } catch (RestClientException e) {
-            log.warn("BrasilAPI indisponível para {} em {}: conversão indisponível ({})",
+            log.warn("BrasilAPI recusou a consulta de {} em {}: conversão indisponível ({})",
                     moeda, data, causaRaiz(e));
             return Optional.empty();
         }

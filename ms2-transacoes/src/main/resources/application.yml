@@ -35,3 +35,5 @@ mockapi:
 brasilapi:
   base-url: ${BRASILAPI_BASE_URL:https://brasilapi.com.br/api}
   timeout-ms: 2000
+  # Depois de uma falha de conexão, a BrasilAPI não é chamada por este tempo (a conversão sai indisponível na hora).
+  pausa-apos-falha-segundos: 300

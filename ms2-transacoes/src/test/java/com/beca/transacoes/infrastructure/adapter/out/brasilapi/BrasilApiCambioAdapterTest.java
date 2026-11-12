@@ -14,8 +14,10 @@ import org.springframework.web.client.RestClient;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Optional;
 
@@ -129,31 +131,111 @@ class BrasilApiCambioAdapterTest {
         assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
     }
 
-    @Test
-    void erro5xxTempoLimiteOuSemRedeViramConversaoIndisponivel() {
-        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09")).andRespond(withServerError());
-        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
-
-        api.reset();
-        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
-                .andRespond(withException(new SocketTimeoutException("Read timed out")));
-        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
-
-        api.reset();
-        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
-                .andRespond(withException(new IOException("Connection refused")));
-        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+    /** Um adapter novo, com a API simulada e o relógio informado. */
+    private BrasilApiCambioAdapter adapterCom(Clock relogio) {
+        RestClient.Builder builder = RestClient.builder().baseUrl(API);
+        api = MockRestServiceServer.bindTo(builder).build();
+        return new BrasilApiCambioAdapter(builder.build(), relogio, Duration.ofMinutes(5));
     }
 
     @Test
-    void falhaNaoFicaEmCache() {
+    void erro5xxTempoLimiteOuSemRedeViramConversaoIndisponivel() {
+        BrasilApiCambioAdapter com5xx = adapterCom(TERCA);
+        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09")).andRespond(withServerError());
+        assertThat(com5xx.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+
+        BrasilApiCambioAdapter comTempoLimite = adapterCom(TERCA);
+        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withException(new SocketTimeoutException("Read timed out")));
+        assertThat(comTempoLimite.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+
+        BrasilApiCambioAdapter semRede = adapterCom(TERCA);
+        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withException(new IOException("Connection refused")));
+        assertThat(semRede.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+    }
+
+    @Test
+    void depoisDeUmaFalhaAsConsultasFicamEmPausaSemChamarAApi() {
+        RelogioAjustavel relogio = new RelogioAjustavel(Instant.parse("2026-11-10T19:00:00Z"));
+        BrasilApiCambioAdapter pausavel = adapterCom(relogio);
+        api.expect(ExpectedCount.once(), requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withException(new SocketTimeoutException("Read timed out")));
+
+        assertThat(pausavel.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+        relogio.avancar(Duration.ofMinutes(4));
+        // Nem o USD de novo nem o EUR chamam a API: a espera do tempo limite não se repete.
+        assertThat(pausavel.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+        assertThat(pausavel.cotacao(MoedaEstrangeira.EUR, HOJE)).isEmpty();
+        api.verify();
+    }
+
+    @Test
+    void passadaAPausaAApiEConsultadaDeNovo() {
+        RelogioAjustavel relogio = new RelogioAjustavel(Instant.parse("2026-11-10T19:00:00Z"));
+        BrasilApiCambioAdapter pausavel = adapterCom(relogio);
         api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09")).andRespond(withServerError());
         api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
                 .andRespond(withSuccess(USD_SEGUNDA, MediaType.APPLICATION_JSON));
 
-        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
-        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isPresent();
+        assertThat(pausavel.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+        relogio.avancar(Duration.ofMinutes(5));
+        assertThat(pausavel.cotacao(MoedaEstrangeira.USD, HOJE)).isPresent();
         api.verify();
+    }
+
+    @Test
+    void cotacaoJaEmCacheContinuaValendoDuranteAPausa() {
+        RelogioAjustavel relogio = new RelogioAjustavel(Instant.parse("2026-11-10T19:00:00Z"));
+        BrasilApiCambioAdapter pausavel = adapterCom(relogio);
+        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withSuccess(USD_SEGUNDA, MediaType.APPLICATION_JSON));
+        api.expect(requestTo(API + "/cambio/v1/cotacao/EUR/2026-11-09")).andRespond(withServerError());
+
+        pausavel.cotacao(MoedaEstrangeira.USD, HOJE);
+        assertThat(pausavel.cotacao(MoedaEstrangeira.EUR, HOJE)).isEmpty();
+        assertThat(pausavel.cotacao(MoedaEstrangeira.USD, HOJE)).isPresent();
+        api.verify();
+    }
+
+    @Test
+    void recusa4xxNaoPausaAsConsultas() {
+        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+        api.expect(requestTo(API + "/cambio/v1/cotacao/EUR/2026-11-09"))
+                .andRespond(withSuccess(EUR_DOMINGO_DEVOLVE_SEXTA, MediaType.APPLICATION_JSON));
+
+        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+        assertThat(adapter.cotacao(MoedaEstrangeira.EUR, HOJE)).isPresent();
+        api.verify();
+    }
+
+    /** Relógio que o teste avança, para simular a passagem do tempo da pausa. */
+    static final class RelogioAjustavel extends Clock {
+        private Instant agora;
+
+        RelogioAjustavel(Instant agora) {
+            this.agora = agora;
+        }
+
+        void avancar(Duration tempo) {
+            agora = agora.plus(tempo);
+        }
+
+        @Override
+        public Instant instant() {
+            return agora;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zona) {
+            return Clock.fixed(agora, zona);
+        }
     }
 
     @Test
