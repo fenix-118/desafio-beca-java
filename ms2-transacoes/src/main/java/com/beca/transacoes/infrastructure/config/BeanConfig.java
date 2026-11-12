@@ -5,6 +5,7 @@ import com.beca.transacoes.application.port.out.ContaPort;
 import com.beca.transacoes.application.port.out.TransacaoRepositoryPort;
 import com.beca.transacoes.application.port.out.UsuarioPort;
 import com.beca.transacoes.application.service.DespesaService;
+import com.beca.transacoes.application.service.RelatorioService;
 import com.beca.transacoes.application.service.SaldoService;
 import com.beca.transacoes.application.service.TransacaoService;
 import org.springframework.context.annotation.Bean;
@@ -36,5 +37,10 @@ public class BeanConfig {
     @Bean
     public DespesaService despesaService(TransacaoRepositoryPort repositorio, Clock relogio) {
         return new DespesaService(repositorio, relogio);
+    }
+
+    @Bean
+    public RelatorioService relatorioService(TransacaoRepositoryPort repositorio, Clock relogio) {
+        return new RelatorioService(repositorio, relogio);
     }
 }
