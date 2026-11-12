@@ -54,13 +54,14 @@ class RelatorioControllerTest {
                         .requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L)
                         .param("inicio", "2026-11-01").param("fim", "2026-11-30"))
                 .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string("Content-Type", "text/csv;charset=UTF-8"))
                 .andExpect(header().string("Content-Disposition",
                         "attachment; filename=\"transacoes-2026-11-01-a-2026-11-30.csv\""))
                 .andReturn().getResponse().getContentAsByteArray();
 
         String csv = new String(corpo, StandardCharsets.UTF_8);
-        assertThat(csv).contains("Cinema").contains("COMPRA").contains("APROVADA");
+        assertThat(corpo).startsWith((byte) 0xEF, (byte) 0xBB, (byte) 0xBF);
+        assertThat(csv).contains("10/11/2026 12:00;7;COMPRA;LAZER;Cinema;;80,50;APROVADA;");
     }
 
     @Test

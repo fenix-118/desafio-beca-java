@@ -26,7 +26,7 @@ class RelatorioCsvTest {
     @Test
     void semTransacoesTemSoOCabecalho() {
         assertThat(csv()).isEqualTo(
-                "Data;Id;Tipo;Categoria;Descrição;Usuário destino;Valor (BRL);Status;Motivo da rejeição\r\n");
+                "\uFEFFData;Id;Tipo;Categoria;Descrição;Usuário destino;Valor (BRL);Status;Motivo da rejeição\r\n");
     }
 
     @Test
@@ -38,7 +38,7 @@ class RelatorioCsvTest {
 
         assertThat(linhas).hasSize(2);
         assertThat(linhas[1]).isEqualTo(
-                "2026-11-10T12:30;5;TRANSFERENCIA;;Aluguel;4;1500.00;REJEITADA;Saldo insuficiente para a transação.");
+                "10/11/2026 12:30;5;TRANSFERENCIA;;Aluguel;4;1500,00;REJEITADA;Saldo insuficiente para a transação.");
     }
 
     @Test
@@ -49,5 +49,33 @@ class RelatorioCsvTest {
         assertThat(csv(compra)).contains(";\"Pão; leite \"\"integral\"\"\";");
         assertThat(RelatorioCsv.campo("linha 1\nlinha 2")).isEqualTo("\"linha 1\nlinha 2\"");
         assertThat(RelatorioCsv.campo("simples")).isEqualTo("simples");
+    }
+
+    @Test
+    void comecaComBomUtf8ParaOExcelLerOsAcentos() {
+        byte[] bytes = RelatorioCsv.gerar(List.of());
+
+        assertThat(bytes).startsWith((byte) 0xEF, (byte) 0xBB, (byte) 0xBF);
+    }
+
+    @Test
+    void valorComVirgulaDecimalESemSeparadorDeMilhar() {
+        assertThat(RelatorioCsv.valor(new BigDecimal("1234567.89"))).isEqualTo("1234567,89");
+        assertThat(RelatorioCsv.valor(new BigDecimal("0.50"))).isEqualTo("0,50");
+    }
+
+    @Test
+    void descricaoQueComecaComoFormulaGanhaApostrofo() {
+        Transacao maliciosa = Transacao.reconstituir(8L, 3L, TipoTransacao.COMPRA, new BigDecimal("1.00"),
+                Categoria.OUTROS, null, "=HYPERLINK(\"http://exemplo.invalid\";\"clique\")", QUANDO,
+                StatusTransacao.APROVADA, null);
+
+        // Com ";" e aspas, o campo vai entre aspas; o apóstrofo vem antes do "=".
+        assertThat(csv(maliciosa)).contains(";\"'=HYPERLINK(\"\"http://exemplo.invalid\"\";\"\"clique\"\")\";");
+        assertThat(RelatorioCsv.semFormula("+1")).isEqualTo("'+1");
+        assertThat(RelatorioCsv.semFormula("-1")).isEqualTo("'-1");
+        assertThat(RelatorioCsv.semFormula("@SUM(A1)")).isEqualTo("'@SUM(A1)");
+        assertThat(RelatorioCsv.semFormula("Mercado")).isEqualTo("Mercado");
+        assertThat(RelatorioCsv.semFormula("")).isEmpty();
     }
 }
