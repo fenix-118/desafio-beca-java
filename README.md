@@ -31,6 +31,7 @@ Depois, preencha os valores no `.env`:
 | `POSTGRES_PASSWORD` | Sim | Senha do PostgreSQL |
 | `MOCKAPI_BASE_URL` | Sim, para o MS2 | URL base da API Mock (recurso `contas`); sem ela o MS2 não sobe |
 | `MS1_BASE_URL` | Não | Endereço do MS1 usado pelo MS2 (padrão `http://localhost:8081`) |
+| `SERVICO_TOKEN` | Sim | Token que o MS2 manda ao MS1 para consultar usuários (o mesmo nos dois serviços); use um valor aleatório e longo |
 | `BRASILAPI_BASE_URL` | Não | URL base da BrasilAPI, usada no câmbio (padrão `https://brasilapi.com.br/api`) |
 
 ### 2. Subir o banco
@@ -207,8 +208,6 @@ O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar. Pela IDE, suba o
 | Só uma das datas → 400; `inicio` depois de `fim` → 400 | Evita um período ambíguo |
 | Período de no máximo 366 dias → senão 400 | Um intervalo de vários anos carregaria todas as transações na memória de uma vez |
 
-> **Pendência de segurança:** neste PR, `GET /despesas/resumo` ainda não exige login, como as outras rotas do MS2: qualquer pessoa consulta o resumo de outro usuário trocando o `usuarioId`. A autenticação, com o `usuarioId` conferido contra o usuário do login, entra no PR do pedido 6 (login).
-
 Exemplo de resposta:
 
 ```json
@@ -239,6 +238,8 @@ Todas as rotas do MS2 pedem **login básico** (HTTP Basic) com o e-mail e a senh
 |---|---|
 | MS1 `POST /autenticacao` | Aberta: confere e-mail e senha e devolve `id`, `nome` e `email` (sem senha) |
 | MS1 `POST /usuarios` (cadastro) e `/usuarios/importacao` | Abertas |
+| MS1 `GET`, `PUT` e `DELETE /usuarios/{id}` | Login do **próprio** usuário; o `GET` também aceita o MS2, com o token de serviço (`X-Servico-Token`) |
+| MS1 `GET /usuarios` (lista de todos) | Removida: expunha o nome e o e-mail de todos os usuários |
 | MS2 `/transacoes`, `/contas/{usuarioId}/saldo`, `/despesas/resumo` | Login obrigatório; cada usuário só vê e registra as **próprias** transações |
 | `/swagger-ui.html`, `/v3/api-docs`, `/actuator/health` (MS1 e MS2) | Abertas: documentação e health check do Compose |
 
@@ -251,7 +252,9 @@ Todas as rotas do MS2 pedem **login básico** (HTTP Basic) com o e-mail e a senh
 
 **No Swagger do MS2:** clique em **Authorize**, informe o e-mail e a senha do MS1 e depois use o **Try it out** normalmente. **Pelo terminal:** `curl -u email@example.com:senha "http://localhost:8082/contas/3/saldo"`.
 
-> **Limitação conhecida:** as rotas de usuários do MS1 (`GET`, `PUT` e `DELETE /usuarios/{id}`) continuam abertas, porque o MS2 as consulta de serviço para serviço para conferir o dono e o destino das transações. Em produção, essas chamadas usariam uma credencial própria do serviço (ou ficariam só na rede interna), e as rotas de usuários exigiriam o login do próprio usuário.
+**Como o MS2 consulta o MS1:** para conferir o dono e o destino das transações, o MS2 chama `GET /usuarios/{id}` com o cabeçalho `X-Servico-Token`, que precisa ser igual ao `SERVICO_TOKEN` do MS1. O token só vale para essa consulta: alterar e excluir exigem o login do próprio usuário. Sem `SERVICO_TOKEN` no `.env`, os dois serviços param logo na subida com uma mensagem dizendo o que falta.
+
+> **Melhoria conhecida:** o `POST /autenticacao` não limita tentativas, então alguém poderia testar muitas senhas seguidas. Em produção, a solução seria limitar as tentativas por e-mail e por IP (por exemplo, bloquear por alguns minutos depois de 5 erros) e registrar as falhas para monitoramento.
 
 ## Segurança e segredos
 

@@ -14,11 +14,22 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class Ms1ClientConfig {
 
+    /** Cabeçalho com o token de serviço: o MS1 só deixa o MS2 consultar usuários com ele. */
+    static final String CABECALHO_SERVICO = "X-Servico-Token";
+
     @Bean
     public UsuarioPort usuarioPort(RestClient.Builder builder,
                                    @Value("${ms1.base-url}") String baseUrl,
-                                   @Value("${ms1.timeout-ms}") int timeoutMs) {
-        return new UsuarioRestAdapter(ms1(builder, baseUrl, timeoutMs));
+                                   @Value("${ms1.timeout-ms}") int timeoutMs,
+                                   @Value("${ms1.token-servico:}") String tokenServico) {
+        if (tokenServico.isBlank()) {
+            throw new IllegalStateException(
+                    "Defina SERVICO_TOKEN no arquivo .env (o mesmo do MS1): sem ele o MS1 recusa as consultas de usuário.");
+        }
+        RestClient ms1 = ms1(builder, baseUrl, timeoutMs).mutate()
+                .defaultHeader(CABECALHO_SERVICO, tokenServico)
+                .build();
+        return new UsuarioRestAdapter(ms1);
     }
 
     @Bean
