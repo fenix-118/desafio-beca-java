@@ -46,6 +46,8 @@ while IFS= read -r linha; do
         problemas+=("$arquivo: $conteudo")
       fi ;;
     *.yml|*.yaml|*.properties|*.env*|*.json|*.sh|*.xml|docker-compose*)
+      # Placeholders \${...} viram $ENV antes de conferir: "token: \${SERVICO_TOKEN:}" não é valor literal.
+      conteudo="$(sed -E 's/\$\{[^}]*\}/$ENV/g' <<< "$conteudo")"
       valor="$(grep -oiE '(password|passwd|senha|secret|token|api[_-]?key)[a-z_]*["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[^"'"'"'[:space:]]+' <<< "$conteudo" \
         | head -1 | sed -E 's/^[^:=]*[:=][[:space:]]*["'"'"']?//')"
       if [ -n "$valor" ]; then

@@ -1,14 +1,16 @@
 package com.beca.transacoes.infrastructure.adapter.in.web;
 
 import com.beca.transacoes.application.port.in.BuscarTransacaoUseCase;
-import com.beca.transacoes.application.port.in.ListarTransacoesUseCase;
 import com.beca.transacoes.application.port.in.ListarTransacoesUseCase.ListarTransacoesQuery;
+import com.beca.transacoes.application.port.in.ListarTransacoesUseCase;
 import com.beca.transacoes.application.port.in.RegistrarTransacaoUseCase;
 import com.beca.transacoes.domain.model.TipoTransacao;
 import com.beca.transacoes.domain.model.Transacao;
 import com.beca.transacoes.infrastructure.adapter.in.web.dto.RegistrarTransacaoRequest;
 import com.beca.transacoes.infrastructure.adapter.in.web.dto.TransacaoResponse;
 import com.beca.transacoes.infrastructure.adapter.in.web.mapper.TransacaoWebMapper;
+import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.AutenticacaoBasicaFilter;
+import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.Dono;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -68,8 +71,15 @@ public class TransacaoController {
     @ApiResponse(responseCode = "503", description = "MS1 indisponível ao conferir o dono; nada é gravado",
             content = @Content(mediaType = "application/problem+json",
                     schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "Os dados são de outro usuário",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
     @PostMapping
-    public ResponseEntity<TransacaoResponse> registrar(@Valid @RequestBody RegistrarTransacaoRequest request) {
+    public ResponseEntity<TransacaoResponse> registrar(
+            @Valid @RequestBody RegistrarTransacaoRequest request,
+            @Parameter(hidden = true)
+            @RequestAttribute(name = AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, required = false) Long usuarioAutenticado) {
+        Dono.exigir(usuarioAutenticado, request.usuarioId());
         Transacao transacao = registrarTransacao.registrar(TransacaoWebMapper.paraComando(request));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
@@ -83,9 +93,18 @@ public class TransacaoController {
     @ApiResponse(responseCode = "404", description = "Transação não encontrada",
             content = @Content(mediaType = "application/problem+json",
                     schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "Os dados são de outro usuário",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
     @GetMapping("/{id}")
-    public TransacaoResponse buscarPorId(@PathVariable Long id) {
-        return TransacaoWebMapper.paraResposta(buscarTransacao.buscarPorId(id));
+    public TransacaoResponse buscarPorId(
+            @PathVariable Long id,
+            @Parameter(hidden = true)
+            @RequestAttribute(name = AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, required = false) Long usuarioAutenticado) {
+        Dono.exigir(usuarioAutenticado, null);
+        Transacao transacao = buscarTransacao.buscarPorId(id);
+        Dono.exigir(usuarioAutenticado, transacao.getUsuarioId());
+        return TransacaoWebMapper.paraResposta(transacao);
     }
 
     @Operation(summary = "Lista as transações de um usuário",
@@ -93,6 +112,9 @@ public class TransacaoController {
                     + "no fuso de São Paulo e o dia final é incluído. Responde 400 se 'inicio' for depois de 'fim'.")
     @ApiResponse(responseCode = "200", description = "Lista de transações (pode ser vazia)")
     @ApiResponse(responseCode = "400", description = "Parâmetros inválidos",
+            content = @Content(mediaType = "application/problem+json",
+                    schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "403", description = "Os dados são de outro usuário",
             content = @Content(mediaType = "application/problem+json",
                     schema = @Schema(implementation = ProblemDetail.class)))
     @GetMapping
@@ -104,7 +126,10 @@ public class TransacaoController {
             @Parameter(description = "Último dia, incluído (aaaa-mm-dd)", example = "2026-11-30")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fim,
             @Parameter(description = "Filtra por tipo")
-            @RequestParam(required = false) TipoTransacao tipo) {
+            @RequestParam(required = false) TipoTransacao tipo,
+            @Parameter(hidden = true)
+            @RequestAttribute(name = AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, required = false) Long usuarioAutenticado) {
+        Dono.exigir(usuarioAutenticado, usuarioId);
         return listarTransacoes.listar(new ListarTransacoesQuery(usuarioId, inicio, fim, tipo)).stream()
                 .map(TransacaoWebMapper::paraResposta)
                 .toList();

@@ -24,3 +24,7 @@ management:
     web:
       exposure:
         include: health
+
+servico:
+  # Token que o MS2 manda em X-Servico-Token para consultar usuários (GET /usuarios/{id}). Fica só no .env.
+  token: ${SERVICO_TOKEN:}

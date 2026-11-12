@@ -1,9 +1,12 @@
 package com.beca.usuarios.infrastructure.adapter.in.web;
 
+import com.beca.usuarios.domain.exception.CredenciaisInvalidasException;
 import com.beca.usuarios.domain.exception.DadosInvalidosException;
 import com.beca.usuarios.domain.exception.EmailJaCadastradoException;
 import com.beca.usuarios.domain.exception.UsuarioNaoEncontradoException;
 import com.beca.usuarios.infrastructure.adapter.in.csv.ArquivoCsvInvalidoException;
+import com.beca.usuarios.infrastructure.adapter.in.web.seguranca.AcessoNegadoException;
+import com.beca.usuarios.infrastructure.adapter.in.web.seguranca.NaoAutenticadoException;
 import com.beca.usuarios.infrastructure.support.RestricaoBanco;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +27,22 @@ public class ApiExceptionHandler {
     static final String MENSAGEM_CONFLITO_DADOS = "Conflito de dados: o registro viola uma restrição do banco.";
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    /** Sem log do e-mail nem da senha: a resposta é sempre a mesma mensagem. */
+    @ExceptionHandler(CredenciaisInvalidasException.class)
+    public ProblemDetail credenciaisInvalidas(CredenciaisInvalidasException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(NaoAutenticadoException.class)
+    public ProblemDetail naoAutenticado(NaoAutenticadoException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(AcessoNegadoException.class)
+    public ProblemDetail acessoNegado(AcessoNegadoException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
 
     @ExceptionHandler(UsuarioNaoEncontradoException.class)
     public ProblemDetail naoEncontrado(UsuarioNaoEncontradoException ex) {

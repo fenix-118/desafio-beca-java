@@ -11,6 +11,8 @@ import com.beca.transacoes.domain.model.MotivoRejeicao;
 import com.beca.transacoes.domain.model.StatusTransacao;
 import com.beca.transacoes.domain.model.TipoTransacao;
 import com.beca.transacoes.domain.model.Transacao;
+import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.AcessoNegadoException;
+import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.AutenticacaoBasicaFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -53,7 +55,7 @@ class TransacaoControllerTest {
     void donoInexistenteResponde404() throws Exception {
         when(registrar.registrar(any())).thenThrow(new UsuarioNaoEncontradoException(9999L));
 
-        mvc.perform(post("/transacoes").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 9999L).contentType(MediaType.APPLICATION_JSON)
                         .content("{ \"usuarioId\": 9999, \"tipo\": \"DEPOSITO\", \"valor\": 10 }"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail").value("Usuário 9999 não encontrado."));
@@ -63,7 +65,7 @@ class TransacaoControllerTest {
     void ms1ForaDoArAoConferirODonoResponde503() throws Exception {
         when(registrar.registrar(any())).thenThrow(new ServicoUsuariosIndisponivelException("timeout", null));
 
-        mvc.perform(post("/transacoes").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L).contentType(MediaType.APPLICATION_JSON)
                         .content("{ \"usuarioId\": 3, \"tipo\": \"DEPOSITO\", \"valor\": 10 }"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.detail").value(ApiExceptionHandler.USUARIOS_INDISPONIVEL));
@@ -73,7 +75,7 @@ class TransacaoControllerTest {
     void erroInesperadoDoMs1Responde502() throws Exception {
         when(registrar.registrar(any())).thenThrow(new FalhaIntegracaoUsuariosException(403, null));
 
-        mvc.perform(post("/transacoes").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L).contentType(MediaType.APPLICATION_JSON)
                         .content("{ \"usuarioId\": 3, \"tipo\": \"DEPOSITO\", \"valor\": 10 }"))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.detail").value(ApiExceptionHandler.FALHA_INTEGRACAO_USUARIOS));
@@ -86,7 +88,7 @@ class TransacaoControllerTest {
                 StatusTransacao.REJEITADA, MotivoRejeicao.DESTINO_INEXISTENTE);
         when(registrar.registrar(any())).thenReturn(rejeitada);
 
-        mvc.perform(post("/transacoes").contentType(MediaType.APPLICATION_JSON).content(TRANSFERENCIA))
+        mvc.perform(post("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L).contentType(MediaType.APPLICATION_JSON).content(TRANSFERENCIA))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", "http://localhost/transacoes/7"))
                 .andExpect(jsonPath("$.status").value("REJEITADA"))
@@ -96,7 +98,7 @@ class TransacaoControllerTest {
 
     @Test
     void corpoInvalidoResponde400ComOCampo() throws Exception {
-        mvc.perform(post("/transacoes").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L).contentType(MediaType.APPLICATION_JSON)
                         .content("{ \"usuarioId\": 3, \"tipo\": \"DEPOSITO\", \"valor\": 10.555 }"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.campos.valor").exists());
@@ -113,7 +115,7 @@ class TransacaoControllerTest {
                                 new BigDecimal("6.1317"), java.time.LocalDate.of(2026, 11, 6))));
         when(buscar.buscarPorId(18L)).thenReturn(compra);
 
-        mvc.perform(get("/transacoes/18"))
+        mvc.perform(get("/transacoes/18").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valor").value(120.0))
                 .andExpect(jsonPath("$.moeda").value("BRL"))
@@ -134,12 +136,49 @@ class TransacaoControllerTest {
                 StatusTransacao.APROVADA, null);
         when(buscar.buscarPorId(21L)).thenReturn(semCambio);
 
-        mvc.perform(get("/transacoes/21"))
+        mvc.perform(get("/transacoes/21").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("APROVADA"))
                 .andExpect(jsonPath("$.conversoes[0].moeda").value("USD"))
                 .andExpect(jsonPath("$.conversoes[0].disponivel").value(false))
                 .andExpect(jsonPath("$.conversoes[0].valor").doesNotExist())
                 .andExpect(jsonPath("$.conversoes[1].disponivel").value(false));
+    }
+
+    // ---------- autorização (tarefa 6.3) ----------
+
+    @Test
+    void registrarParaOutroUsuarioResponde403() throws Exception {
+        mvc.perform(post("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 4L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"usuarioId\": 3, \"tipo\": \"DEPOSITO\", \"valor\": 10 }"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.detail").value(AcessoNegadoException.MENSAGEM));
+        org.mockito.Mockito.verifyNoInteractions(registrar);
+    }
+
+    @Test
+    void consultarTransacaoDeOutroUsuarioResponde403() throws Exception {
+        Transacao daAna = Transacao.reconstituir(18L, 3L, TipoTransacao.COMPRA, new BigDecimal("120.00"),
+                Categoria.ALIMENTACAO, null, null, Instant.parse("2026-11-10T14:39:13Z"),
+                StatusTransacao.APROVADA, null);
+        when(buscar.buscarPorId(18L)).thenReturn(daAna);
+
+        mvc.perform(get("/transacoes/18").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 4L))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listarTransacoesDeOutroUsuarioResponde403() throws Exception {
+        mvc.perform(get("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 4L)
+                        .param("usuarioId", "3"))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verifyNoInteractions(listar);
+    }
+
+    @Test
+    void semUsuarioAutenticadoResponde401() throws Exception {
+        mvc.perform(get("/transacoes").param("usuarioId", "3"))
+                .andExpect(status().isUnauthorized());
     }
 }

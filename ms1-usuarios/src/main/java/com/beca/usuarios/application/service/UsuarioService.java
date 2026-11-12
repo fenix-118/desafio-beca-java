@@ -1,11 +1,13 @@
 package com.beca.usuarios.application.service;
 
 import com.beca.usuarios.application.port.in.AtualizarUsuarioUseCase;
+import com.beca.usuarios.application.port.in.AutenticarUsuarioUseCase;
 import com.beca.usuarios.application.port.in.BuscarUsuarioUseCase;
 import com.beca.usuarios.application.port.in.CriarUsuarioUseCase;
 import com.beca.usuarios.application.port.in.ExcluirUsuarioUseCase;
 import com.beca.usuarios.application.port.out.SenhaEncoderPort;
 import com.beca.usuarios.application.port.out.UsuarioRepositoryPort;
+import com.beca.usuarios.domain.exception.CredenciaisInvalidasException;
 import com.beca.usuarios.domain.exception.DadosInvalidosException;
 import com.beca.usuarios.domain.exception.EmailJaCadastradoException;
 import com.beca.usuarios.domain.exception.UsuarioNaoEncontradoException;
@@ -20,7 +22,8 @@ public class UsuarioService implements
         CriarUsuarioUseCase,
         BuscarUsuarioUseCase,
         AtualizarUsuarioUseCase,
-        ExcluirUsuarioUseCase {
+        ExcluirUsuarioUseCase,
+        AutenticarUsuarioUseCase {
 
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final int NOME_MAX = 120;
@@ -85,6 +88,22 @@ public class UsuarioService implements
             throw new UsuarioNaoEncontradoException(id);
         }
         repositorio.excluirPorId(id);
+    }
+
+    /**
+     * E-mail inexistente e senha errada respondem igual (CredenciaisInvalidasException), e a senha
+     * nunca vai para log nem para exceção. Senha vazia ou acima de 72 bytes nem chega ao BCrypt.
+     */
+    @Override
+    public Usuario autenticar(String email, String senha) {
+        if (email == null || email.isBlank() || senha == null || senha.isEmpty()
+                || senha.getBytes(StandardCharsets.UTF_8).length > SENHA_MAX_BYTES) {
+            throw new CredenciaisInvalidasException();
+        }
+        String emailNormalizado = email.trim().toLowerCase(Locale.ROOT);
+        return repositorio.buscarPorEmail(emailNormalizado)
+                .filter(u -> senhaEncoder.confere(senha, u.getSenhaHash()))
+                .orElseThrow(CredenciaisInvalidasException::new);
     }
 
     private String validarNome(String nome) {
