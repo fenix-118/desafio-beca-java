@@ -60,9 +60,41 @@ A primeira opção faz o Java usar o proxy do Windows; a segunda faz ele confiar
 
 ```bash
 docker compose up -d --build
+docker compose ps
 ```
 
-> O MS2 ainda não está no Compose: por enquanto, ele roda pela IDE. O Compose sobe o PostgreSQL e o MS1.
+O Compose sobe os três serviços na ordem certa, e cada um só começa depois que o anterior está saudável:
+
+| Ordem | Serviço | Espera por | Saudável quando |
+|---|---|---|---|
+| 1 | `postgres` | — | `pg_isready` responde |
+| 2 | `ms1-usuarios` | PostgreSQL saudável | `/actuator/health` responde `UP` |
+| 3 | `ms2-transacoes` | PostgreSQL e MS1 saudáveis | `/actuator/health` responde `UP` |
+
+O MS2 fala com o MS1 pelo **nome do serviço** (`http://ms1-usuarios:8081`) na rede interna `beca-net`, e não por `localhost`. Sem `MOCKAPI_BASE_URL` no `.env`, o Compose para logo no início, com a mensagem dizendo o que falta. As portas ficam presas em `127.0.0.1`, e os containers rodam sem privilégios extras (`no-new-privileges`, `cap_drop: ALL`).
+
+> Na rede corporativa, o `--build` pode falhar ao baixar as dependências do Maven dentro do container. Nesse caso, rode os serviços pela IDE (passo 3) e use o Compose só para o PostgreSQL.
+
+### 5. Derrubar e subir de novo
+
+| Comando | O que acontece com os dados |
+|---|---|
+| `docker compose down` e depois `docker compose up -d` | **Ficam**: o banco está no volume `pgdata`, que sobrevive ao `down` |
+| `docker compose restart ms2-transacoes` | Ficam; só o MS2 reinicia (útil para testar o MS2 com o MS1 no ar) |
+| `docker compose stop ms1-usuarios` | Ficam; serve para mostrar o MS2 com o MS1 fora do ar (503 ao conferir o dono) |
+| `docker compose down -v` e depois `docker compose up -d --build` | **Somem**: o `-v` apaga o volume, e o banco é recriado vazio pelo `docker/postgres/init.sql` |
+
+Para conferir que os dados sobreviveram: `curl -s http://localhost:8081/usuarios` antes e depois do `down`/`up`.
+
+### 6. Dados de exemplo para a demonstração
+
+Com os serviços no ar, o script abaixo cadastra os usuários do `samples/usuarios-exemplo.csv` no MS1 e registra no MS2 uma sequência de transações de um usuário que tenha conta na API Mock:
+
+```bash
+bash docker/demo/carregar-dados-demo.sh 3 4
+```
+
+Os argumentos são o id do usuário que faz as transações (padrão `3`) e o id do destino da transferência (padrão `4`); os dois precisam existir no MS1 e ter conta na Mock. O script mostra o status de cada transação e termina com o saldo e o resumo de despesas do mês. Rodar de novo cria transações novas (o CSV repetido só gera falhas de e-mail já cadastrado). Os endereços podem ser trocados por `MS1_URL` e `MS2_URL`.
 
 ### Serviços
 
@@ -74,7 +106,7 @@ docker compose up -d --build
 
 ## Documentação da API (Swagger)
 
-Com os serviços rodando (o MS1 pela IDE ou pelo Compose, o MS2 pela IDE):
+Com os serviços rodando, pela IDE ou pelo Compose:
 
 | Recurso | MS1 - Usuários | MS2 - Transações |
 |---|---|---|

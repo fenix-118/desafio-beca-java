@@ -53,7 +53,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/transacoes_db
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?defina POSTGRES_USER no arquivo .env}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
-      MOCKAPI_BASE_URL: ${MOCKAPI_BASE_URL:-}
+      MOCKAPI_BASE_URL: ${MOCKAPI_BASE_URL:?defina MOCKAPI_BASE_URL no arquivo .env}
+      BRASILAPI_BASE_URL: ${BRASILAPI_BASE_URL:-https://brasilapi.com.br/api}
+      # Fala com o MS1 pelo nome do serviço na rede do Compose, não por localhost.
       MS1_BASE_URL: http://ms1-usuarios:8081
     security_opt:
       - no-new-privileges:true
@@ -66,6 +68,12 @@ services:
         condition: service_healthy
       ms1-usuarios:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8082 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
 networks:
   beca-net:
