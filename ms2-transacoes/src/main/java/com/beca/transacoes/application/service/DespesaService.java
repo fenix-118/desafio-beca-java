@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -22,6 +23,11 @@ public class DespesaService implements ConsultarDespesasUseCase {
     static final String PERIODO_INCOMPLETO =
             "Informe 'inicio' e 'fim' juntos, ou nenhum dos dois para consultar o mês atual.";
     static final String PERIODO_INVALIDO = "A data 'inicio' deve ser anterior ou igual à data 'fim'.";
+
+    /** Um ano: evita carregar vários anos de transações na memória de uma vez. */
+    static final int PERIODO_MAXIMO_DIAS = 366;
+    static final String PERIODO_LONGO_DEMAIS =
+            "O período pode ter no máximo " + PERIODO_MAXIMO_DIAS + " dias.";
 
     /** Só saídas podem ser despesa; o filtro de status (aprovada) fica no domínio. */
     private static final Set<TipoTransacao> SAIDAS =
@@ -52,6 +58,9 @@ public class DespesaService implements ConsultarDespesasUseCase {
         }
         if (inicio.isAfter(fim)) {
             throw new DadosInvalidosException(PERIODO_INVALIDO);
+        }
+        if (ChronoUnit.DAYS.between(inicio, fim) + 1 > PERIODO_MAXIMO_DIAS) {
+            throw new DadosInvalidosException(PERIODO_LONGO_DEMAIS);
         }
 
         // Datas são dias em São Paulo; o fim é incluído, por isso o limite é o início do dia seguinte.
