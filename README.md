@@ -21,14 +21,16 @@ Projeto do Desafio Beca Java (Beca Bradesco · NTT DATA).
 | Docker Compose com healthchecks, script de dados para a demonstração e Swagger | [Como rodar](#como-rodar-o-projeto) |
 | Flyway, testes com JaCoCo, `@DataJpaTest` e revisão de segredos com hook de pre-commit | [Testes](#testes-e-cobertura) e [Segurança](#segurança-e-segredos) |
 
+Testes: **79 no MS1 e 174 no MS2**, todos passando (`mvn clean test`, 12/11/2026).
+
 Ficou de fora, documentado: o crédito no destino da transferência (a transferência debita só quem envia), a concorrência entre saídas simultâneas e o limite de tentativas de login. O detalhe e a solução proposta estão em [Limitações conhecidas](#limitações-conhecidas-e-como-resolveríamos) e em [Login](#login-ms1-e-ms2).
 
 ## Como rodar o projeto
 
 ### Pré-requisitos
 - Java 25
-- Maven
-- Docker com Docker Compose
+- Maven 3.9
+- Docker com Docker Compose (Docker Desktop ou Rancher Desktop)
 
 ### 1. Configurar as variáveis de ambiente
 As credenciais do banco ficam no arquivo `.env`, na raiz do projeto. Esse arquivo **não vai para o Git**.
@@ -89,7 +91,11 @@ O Compose sobe os três serviços na ordem certa, e cada um só começa depois q
 
 O MS2 fala com o MS1 pelo **nome do serviço** (`http://ms1-usuarios:8081`) na rede interna `beca-net`, e não por `localhost`. Sem `MOCKAPI_BASE_URL` no `.env`, o Compose para logo no início, com a mensagem dizendo o que falta. As portas ficam presas em `127.0.0.1`, e os containers rodam sem privilégios extras (`no-new-privileges`, `cap_drop: ALL`).
 
-> Na rede corporativa, o `--build` pode falhar ao baixar as dependências do Maven dentro do container. Nesse caso, rode os serviços pela IDE (passo 3) e use o Compose só para o PostgreSQL.
+> **Na rede corporativa, rode o MS1 e o MS2 pela IDE (passo 3) e use o Compose só para o PostgreSQL.** A rede da empresa inspeciona o HTTPS com um certificado próprio. Pela IDE, o Java confia nele com `-Djavax.net.ssl.trustStoreType=Windows-ROOT`, mas o Java do container (Linux) não conhece esse certificado. O sintoma é o saldo responder 503 e o log do MS2 mostrar `API Mock indisponível: SunCertPathBuilderException`. Pelo mesmo motivo, o `--build` também pode falhar ao baixar as dependências do Maven. Fora da rede da empresa, o Compose funciona completo.
+>
+> ```bash
+> docker compose stop ms1-usuarios ms2-transacoes   # deixa só o PostgreSQL no ar
+> ```
 
 ### 5. Derrubar e subir de novo
 
@@ -100,17 +106,40 @@ O MS2 fala com o MS1 pelo **nome do serviço** (`http://ms1-usuarios:8081`) na r
 | `docker compose stop ms1-usuarios` | Ficam; serve para mostrar o MS2 com o MS1 fora do ar (503 ao conferir o dono) |
 | `docker compose down -v` e depois `docker compose up -d --build` | **Somem**: o `-v` apaga o volume, e o banco é recriado vazio pelo `docker/postgres/init.sql` |
 
-Para conferir que os dados sobreviveram: `curl -s http://localhost:8081/usuarios` antes e depois do `down`/`up`.
+Para conferir que os dados sobreviveram, rode antes e depois do `down`/`up`:
+
+```bash
+docker exec beca-postgres sh -c 'psql -U "$POSTGRES_USER" -d usuarios_db -c "select id, email from usuarios order by id"'
+```
+
+> Depois de um `down -v`, ou na primeira vez que o Compose cria o volume, o banco começa vazio e os ids recomeçam do 1. Quem nunca tinha sido cadastrado precisa ser cadastrado de novo, e o `usuarioId` das contas na API Mock precisa bater com os ids novos (veja o passo 6).
 
 ### 6. Dados de exemplo para a demonstração
 
 Com os serviços no ar, o script abaixo faz login no MS1, cadastra os usuários do `samples/usuarios-exemplo.csv` e registra no MS2 uma sequência de transações do usuário do login:
 
+Antes do script, o usuário do login precisa existir no MS1. Num banco novo, importe os usuários de exemplo primeiro:
+
 ```bash
-DEMO_EMAIL=email.do.usuario@example.com bash docker/demo/carregar-dados-demo.sh 4
+curl -s -X POST http://localhost:8081/usuarios/importacao -F "arquivo=@samples/usuarios-exemplo.csv"
 ```
 
-A senha é pedida na hora (ou vem de `DEMO_SENHA`), e não fica no arquivo nem no histórico do terminal. O argumento é o id do destino da transferência (padrão `4`); o usuário do login e o destino precisam ter conta na Mock. O script mostra o status de cada transação e termina com o saldo e o resumo de despesas do mês. Rodar de novo cria transações novas (o CSV repetido só gera falhas de e-mail já cadastrado). Os endereços podem ser trocados por `MS1_URL` e `MS2_URL`.
+Depois rode o script com o e-mail do usuário e o id do destino da transferência:
+
+```bash
+DEMO_EMAIL=ana.souza@example.com DEMO_SENHA='senha do usuário' bash docker/demo/carregar-dados-demo.sh 2
+```
+
+A senha vem de `DEMO_SENHA` (entre aspas simples, por causa de caracteres como `@` e `#`) e não fica no arquivo. No Git Bash do Windows, prefira `DEMO_SENHA` a digitar a senha quando o script pedir: o `read -s` pode não responder nesse terminal. O argumento é o id do destino da transferência (padrão `4`). O usuário do login e o destino precisam ter conta na Mock: o MS2 procura a conta pelo campo `usuarioId` (`GET /contas?usuarioId=1`), então esse campo precisa ser o id do usuário no MS1. Para conferir e corrigir:
+
+```bash
+MOCK="$(grep '^MOCKAPI_BASE_URL=' .env | cut -d= -f2- | tr -d '\r"')"   # lê a URL sem mostrá-la
+curl -s "$MOCK/contas"; echo                                              # lista as contas
+curl -s -X PUT "$MOCK/contas/ID_DA_CONTA" -H 'Content-Type: application/json' \
+  -d '{"usuarioId": 1, "saldo": 1938.5, "limitePorTransacao": 500, "limiteDiario": 800}'; echo
+```
+
+Usuário sem conta na Mock tem o saldo respondendo 404 e as transações `REJEITADA` com `CONTA_INEXISTENTE`. O script mostra o status de cada transação e termina com o saldo e o resumo de despesas do mês. Rodar de novo cria transações novas (o CSV repetido só gera falhas de e-mail já cadastrado). Os endereços podem ser trocados por `MS1_URL` e `MS2_URL`.
 
 ### Serviços
 
@@ -142,7 +171,7 @@ Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação
 | `GET /despesas/resumo?usuarioId=3&inicio=2026-11-01&fim=2026-11-30` | Análise de despesas: total por categoria, por dia e por mês, com o total geral; sem datas, usa o mês atual |
 | `GET /transacoes/relatorio?inicio=2026-11-01&fim=2026-11-30` | Baixa o relatório CSV das transações do usuário do login; sem datas, usa o mês atual |
 
-Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, transferência e compra) exigem categoria; transferência exige `usuarioDestinoId`; saídas são conferidas contra saldo, limite por transação e limite diário (dia no fuso de São Paulo); depósito não tem limite nem exige saldo, mas precisa da conta na Mock para ser creditado: sem conta, ou com a Mock fora do ar, ele é rejeitado.
+Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, transferência e compra) exigem categoria; depósito não aceita `categoria` nem `usuarioDestinoId` (400); transferência exige `usuarioDestinoId`; saídas são conferidas contra saldo, limite por transação e limite diário (dia no fuso de São Paulo); depósito não tem limite nem exige saldo, mas precisa da conta na Mock para ser creditado: sem conta, ou com a Mock fora do ar, ele é rejeitado.
 
 > O saldo e os limites vêm do recurso `contas` da API Mock (mockapi.io). Defina `MOCKAPI_BASE_URL` no `.env` (veja o `.env.example`); sem ela o MS2 não sobe. Usuário sem conta na Mock tem a transação `REJEITADA` com `CONTA_INEXISTENTE`.
 >
@@ -244,9 +273,17 @@ Colunas: `Data; Id; Tipo; Categoria; Descrição; Usuário destino; Valor (BRL);
 | Campo com `;`, aspas ou quebra de linha vai entre aspas | Uma descrição com `;` não quebra as colunas |
 | Texto que começa com `=`, `+`, `-` ou `@` ganha um `'` na frente | A descrição é texto livre: sem isso, uma descrição como `=HYPERLINK(...)` viraria fórmula ao abrir (injeção de CSV, OWASP) |
 
-**No Swagger:** **Authorize** com o login, depois **Try it out** em `GET /transacoes/relatorio` e **Download file**. **Pelo terminal:** `curl -u email@example.com:senha -OJ "http://localhost:8082/transacoes/relatorio?inicio=2026-11-01&fim=2026-11-30"` (o `-OJ` salva com o nome que o servidor manda).
+**Como baixar:**
 
-Conferido abrindo o arquivo como planilha em português: a data vira data, o valor vira número e a descrição com `=` fica como texto.
+| Forma | Como | Abre certo no Excel? |
+|---|---|---|
+| Link direto no navegador (recomendado) | Abra `http://localhost:8082/transacoes/relatorio?inicio=2026-11-01&fim=2026-11-30`; o navegador pede o login e baixa o arquivo | Sim |
+| Terminal | `curl -u 'email@example.com:senha' -OJ "http://localhost:8082/transacoes/relatorio?inicio=2026-11-01&fim=2026-11-30"` (o `-OJ` salva com o nome que o servidor manda) | Sim |
+| Swagger | **Authorize**, **Try it out** em `GET /transacoes/relatorio` e **Download file** | Colunas certas, mas os acentos se perdem |
+
+O botão **Download file** do Swagger lê a resposta como texto e grava o arquivo de novo, e nisso o BOM se perde. Sem o BOM, o Excel abre como ANSI ("DescriÃ§Ã£o"). O arquivo que o MS2 envia está certo: pelo link direto ou pelo `curl`, ele chega intacto. O Swagger continua útil para ver a resposta e testar o 400 e o 401.
+
+Conferido no Excel em português com os dados da demo: os acentos aparecem certos, a data vira data, o valor vira número (formate a coluna como **Moeda** para ver `45,90` em vez de `45,9`) e a descrição com `=` fica como texto.
 
 ## Validação de usuários (MS1)
 
@@ -274,7 +311,7 @@ O esquema de cada serviço é criado pelas migrações do Flyway, em `src/main/r
 | Vazio (clone novo ou `docker compose down -v`) | Roda a `V1` e cria as tabelas |
 | Já tinha as tabelas, criadas pelo antigo `ddl-auto: update` | Registra a `V1` como aplicada (**baseline**) sem rodá-la; os dados ficam como estão |
 
-A `V1` foi escrita a partir do esquema real (`pg_dump -s`), com os mesmos tipos e nomes de restrição. As colunas do câmbio (pedido 3) entram na mesma `V1`, e não num `ALTER TABLE` separado, porque nenhum banco tinha rodado migração antes: a `V1` descreve o esquema completo de hoje, e os bancos que já existiam recebem o baseline. Uma mudança futura no banco entra como `V2__...sql`, nunca editando a `V1`. Para ver o histórico: `docker exec beca-postgres psql -U beca -d transacoes_db -c "select version, description, success from flyway_schema_history"`.
+A `V1` foi escrita a partir do esquema real (`pg_dump -s`), com os mesmos tipos e nomes de restrição. As colunas do câmbio (pedido 3) entram na mesma `V1`, e não num `ALTER TABLE` separado, porque nenhum banco tinha rodado migração antes: a `V1` descreve o esquema completo de hoje, e os bancos que já existiam recebem o baseline. Uma mudança futura no banco entra como `V2__...sql`, nunca editando a `V1`. Para ver o histórico: `docker exec beca-postgres sh -c 'psql -U "$POSTGRES_USER" -d transacoes_db -c "select version, description, success from flyway_schema_history"'`.
 
 ## Testes e cobertura
 
@@ -282,6 +319,8 @@ A `V1` foi escrita a partir do esquema real (`pg_dump -s`), com os mesmos tipos 
 cd ms1-usuarios && mvn clean test
 cd ../ms2-transacoes && mvn clean test
 ```
+
+Resultado esperado: **79 testes no MS1 e 174 no MS2**, sem falhas.
 
 Pelo IntelliJ: painel **Maven** → módulo → **Lifecycle** → `clean` + `test`. Cada build gera o relatório de cobertura do JaCoCo em `target/site/jacoco/index.html` (abra no navegador): a cobertura por pacote e por classe, e as linhas cobertas e não cobertas de cada arquivo. As classes `*Application` ficam de fora, porque só sobem o Spring.
 
@@ -307,7 +346,7 @@ Todas as rotas do MS2 pedem **login básico** (HTTP Basic) com o e-mail e a senh
 | `usuarioId` de outro usuário, ou transação de outro usuário | 403 |
 | MS1 fora do ar ao conferir o login | 503 |
 
-**No Swagger do MS2:** clique em **Authorize**, informe o e-mail e a senha do MS1 e depois use o **Try it out** normalmente. **Pelo terminal:** `curl -u email@example.com:senha "http://localhost:8082/contas/3/saldo"`.
+**No Swagger do MS2:** clique em **Authorize**, informe o e-mail e a senha do MS1 e depois use o **Try it out** normalmente. Se o login estiver errado, o navegador abre a própria janela "Fazer login", porque a resposta 401 traz `WWW-Authenticate: Basic`. Depois de entrar por essa janela, o navegador guarda o login e passa a mandá-lo sozinho para o `localhost:8082`, então as chamadas funcionam mesmo com o cadeado do Swagger aberto. Sem login nenhum, a resposta continua sendo 401. **Pelo terminal:** `curl -u email@example.com:senha "http://localhost:8082/contas/3/saldo"`.
 
 **Como o MS2 consulta o MS1:** para conferir o dono e o destino das transações, o MS2 chama `GET /usuarios/{id}` com o cabeçalho `X-Servico-Token`, que precisa ser igual ao `SERVICO_TOKEN` do MS1. O token só vale para essa consulta: alterar e excluir exigem o login do próprio usuário. Sem `SERVICO_TOKEN` no `.env`, os dois serviços param logo na subida com uma mensagem dizendo o que falta.
 
@@ -362,4 +401,11 @@ Em um falso positivo confirmado, `git commit --no-verify` pula a checagem só da
 
 ## Tecnologias
 
-Java, Spring Boot, JPA, PostgreSQL, Docker Compose, JUnit, Mockito, Swagger/OpenAPI.
+| Camada | Tecnologias |
+|---|---|
+| Linguagem e framework | Java 25, Spring Boot 3.5 (Web, Data JPA, Validation, Actuator), arquitetura hexagonal no MS2 |
+| Banco | PostgreSQL 16, Flyway (migrações), H2 (só nos testes `@DataJpaTest`) |
+| Segurança | HTTP Basic, BCrypt, token entre serviços (`X-Servico-Token`), hook de pre-commit contra segredos |
+| Integrações | API Mock (mockapi.io) para saldo e limites, BrasilAPI (PTAX) para câmbio, `RestClient` |
+| Testes | JUnit 5, Mockito, AssertJ, `@WebMvcTest`, `@DataJpaTest`, `MockRestServiceServer`, JaCoCo |
+| Documentação e entrega | springdoc/Swagger UI, Docker e Docker Compose, Git com PRs empilhados, Jira (Kanban) |
