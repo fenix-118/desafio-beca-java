@@ -124,13 +124,16 @@ Antes do script, o usuário do login precisa existir no MS1. Num banco novo, imp
 curl -s -X POST http://localhost:8081/usuarios/importacao -F "arquivo=@samples/usuarios-exemplo.csv"
 ```
 
-Depois rode o script com o e-mail do usuário e o id do destino da transferência:
+Depois rode o script com o e-mail do usuário e o id do destino da transferência. A senha é lida com `read -s` e passada pelo `export`, **nunca escrita na linha de comando**:
 
 ```bash
-DEMO_EMAIL=ana.souza@example.com DEMO_SENHA='senha do usuário' bash docker/demo/carregar-dados-demo.sh 2
+export DEMO_EMAIL=ana.souza@example.com
+read -rsp 'Senha: ' DEMO_SENHA; echo   # digita sem aparecer na tela
+export DEMO_SENHA
+bash docker/demo/carregar-dados-demo.sh 2
 ```
 
-A senha vem de `DEMO_SENHA` (entre aspas simples, por causa de caracteres como `@` e `#`) e não fica no arquivo. No Git Bash do Windows, prefira `DEMO_SENHA` a digitar a senha quando o script pedir: o `read -s` pode não responder nesse terminal. O argumento é o id do destino da transferência (padrão `4`). O usuário do login e o destino precisam ter conta na Mock: o MS2 procura a conta pelo campo `usuarioId` (`GET /contas?usuarioId=1`), então esse campo precisa ser o id do usuário no MS1. Para conferir e corrigir:
+Assim a senha não aparece na tela, não fica no histórico do terminal (`history`) nem em arquivo. Ela fica só na sessão aberta; para tirar, `unset DEMO_SENHA` (ou feche o terminal). O argumento é o id do destino da transferência (padrão `4`). O usuário do login e o destino precisam ter conta na Mock: o MS2 procura a conta pelo campo `usuarioId` (`GET /contas?usuarioId=1`), então esse campo precisa ser o id do usuário no MS1. Para conferir e corrigir:
 
 ```bash
 MOCK="$(grep '^MOCKAPI_BASE_URL=' .env | cut -d= -f2- | tr -d '\r"')"   # lê a URL sem mostrá-la
@@ -288,7 +291,7 @@ Colunas: `Data; Id; Tipo; Categoria; Descrição; Usuário destino; Valor (BRL);
 | Forma | Como | Abre certo no Excel? |
 |---|---|---|
 | Link direto no navegador (recomendado) | Abra `http://localhost:8082/transacoes/relatorio?inicio=2026-11-01&fim=2026-11-30`; o navegador pede o login e baixa o arquivo | Sim |
-| Terminal | `curl -u 'email@example.com:senha' -OJ "http://localhost:8082/transacoes/relatorio?inicio=2026-11-01&fim=2026-11-30"` (o `-OJ` salva com o nome que o servidor manda) | Sim |
+| Terminal | Com `DEMO_EMAIL` e `DEMO_SENHA` exportados (veja [Senha no terminal](#senha-no-terminal)): `curl -u "$DEMO_EMAIL:$DEMO_SENHA" -OJ "http://localhost:8082/transacoes/relatorio?inicio=2026-11-01&fim=2026-11-30"` (o `-OJ` salva com o nome que o servidor manda) | Sim |
 | Swagger | **Authorize**, **Try it out** em `GET /transacoes/relatorio` e **Download file** | Colunas certas, mas os acentos se perdem |
 
 O botão **Download file** do Swagger lê a resposta como texto e grava o arquivo de novo, e nisso o BOM se perde. Sem o BOM, o Excel abre como ANSI ("DescriÃ§Ã£o"). O arquivo que o MS2 envia está certo: pelo link direto ou pelo `curl`, ele chega intacto. O Swagger continua útil para ver a resposta e testar o 400 e o 401.
@@ -358,7 +361,20 @@ Todas as rotas do MS2 pedem **login básico** (HTTP Basic) com o e-mail e a senh
 | `GET /transacoes/{id}` de uma transação de outro usuário | 403 |
 | MS1 fora do ar ao conferir o login | 503 |
 
-**No Swagger do MS2:** clique em **Authorize**, informe o e-mail e a senha do MS1 e depois use o **Try it out** normalmente. Se o login estiver errado, o navegador abre a própria janela "Fazer login", porque a resposta 401 traz `WWW-Authenticate: Basic`. Depois de entrar por essa janela, o navegador guarda o login e passa a mandá-lo sozinho para o `localhost:8082`, então as chamadas funcionam mesmo com o cadeado do Swagger aberto. Sem login nenhum, a resposta continua sendo 401. **Pelo terminal:** `curl -u email@example.com "http://localhost:8082/contas/saldo"` (só o e-mail: o `curl` pede a senha sem mostrar, e ela não fica no histórico).
+**No Swagger do MS2:** clique em **Authorize**, informe o e-mail e a senha do MS1 e depois use o **Try it out** normalmente. Se o login estiver errado, o navegador abre a própria janela "Fazer login", porque a resposta 401 traz `WWW-Authenticate: Basic`. Depois de entrar por essa janela, o navegador guarda o login e passa a mandá-lo sozinho para o `localhost:8082`, então as chamadas funcionam mesmo com o cadeado do Swagger aberto. Sem login nenhum, a resposta continua sendo 401. **Pelo terminal:** veja abaixo.
+
+#### Senha no terminal
+
+Nenhum comando deste README leva a senha escrita na linha de comando: ela iria para o histórico do terminal e apareceria na tela. Leia uma vez com `read -s` e exporte:
+
+```bash
+export DEMO_EMAIL=ana.souza@example.com
+read -rsp 'Senha: ' DEMO_SENHA; echo
+export DEMO_SENHA
+
+curl -s -u "$DEMO_EMAIL:$DEMO_SENHA" http://localhost:8082/contas/saldo; echo
+unset DEMO_SENHA   # no fim
+```
 
 **Como o MS2 consulta o MS1:** para conferir o dono e o destino das transações, o MS2 chama `GET /usuarios/{id}` com o cabeçalho `X-Servico-Token`, que precisa ser igual ao `SERVICO_TOKEN` do MS1. O token só vale para essa consulta: alterar e excluir exigem o login do próprio usuário. Sem `SERVICO_TOKEN` no `.env`, os dois serviços param logo na subida com uma mensagem dizendo o que falta.
 
