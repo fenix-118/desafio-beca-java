@@ -118,4 +118,24 @@ class TransacaoPersistenceAdapterTest {
                     assertThat(t.getCategoria()).isEqualTo(Categoria.LAZER);
                 });
     }
+
+    @Test
+    void cotacoesVaoEVoltamDoBanco() {
+        Transacao compra = Transacao.solicitar(1L, TipoTransacao.COMPRA, new BigDecimal("120.00"),
+                Categoria.ALIMENTACAO, null, null);
+        compra.avaliar(new SituacaoConta(new BigDecimal("1000"), new BigDecimal("500"), new BigDecimal("800")),
+                BigDecimal.ZERO);
+        compra.anexarCotacao(new com.beca.transacoes.domain.model.Cotacao(
+                com.beca.transacoes.domain.model.MoedaEstrangeira.USD, new BigDecimal("5.5146"),
+                java.time.LocalDate.of(2026, 11, 9)));
+
+        TransacaoEntity entidade = TransacaoPersistenceAdapter.paraEntidade(compra);
+        assertThat(entidade.getCotacaoUsd()).isEqualByComparingTo("5.5146");
+        assertThat(entidade.getDataCotacaoUsd()).isEqualTo(java.time.LocalDate.of(2026, 11, 9));
+        assertThat(entidade.getCotacaoEur()).isNull();
+
+        Transacao deVolta = TransacaoPersistenceAdapter.paraDominio(entidade);
+        assertThat(deVolta.getCotacoes()).hasSize(1);
+        assertThat(deVolta.cotacao(com.beca.transacoes.domain.model.MoedaEstrangeira.EUR)).isEmpty();
+    }
 }

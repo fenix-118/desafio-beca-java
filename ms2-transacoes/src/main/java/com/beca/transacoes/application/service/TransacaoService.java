@@ -3,6 +3,7 @@ package com.beca.transacoes.application.service;
 import com.beca.transacoes.application.port.in.BuscarTransacaoUseCase;
 import com.beca.transacoes.application.port.in.ListarTransacoesUseCase;
 import com.beca.transacoes.application.port.in.RegistrarTransacaoUseCase;
+import com.beca.transacoes.application.port.out.CambioPort;
 import com.beca.transacoes.application.port.out.ContaPort;
 import com.beca.transacoes.application.port.out.ServicoSaldoIndisponivelException;
 import com.beca.transacoes.application.port.out.ServicoUsuariosIndisponivelException;
@@ -12,6 +13,7 @@ import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
 import com.beca.transacoes.domain.exception.UsuarioNaoEncontradoException;
 import com.beca.transacoes.domain.model.MensagensTransacao;
+import com.beca.transacoes.domain.model.MoedaEstrangeira;
 import com.beca.transacoes.domain.model.MotivoRejeicao;
 import com.beca.transacoes.domain.model.SituacaoConta;
 import com.beca.transacoes.domain.model.TipoTransacao;
@@ -20,6 +22,7 @@ import com.beca.transacoes.domain.model.Transacao;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.List;
@@ -38,13 +41,15 @@ public class TransacaoService
     private final TransacaoRepositoryPort repositorio;
     private final ContaPort conta;
     private final UsuarioPort usuarios;
+    private final CambioPort cambio;
     private final Clock relogio;
 
     public TransacaoService(TransacaoRepositoryPort repositorio, ContaPort conta, UsuarioPort usuarios,
-                            Clock relogio) {
+                            CambioPort cambio, Clock relogio) {
         this.repositorio = repositorio;
         this.conta = conta;
         this.usuarios = usuarios;
+        this.cambio = cambio;
         this.relogio = relogio;
     }
 
@@ -66,6 +71,7 @@ public class TransacaoService
         } else {
             saldoAlterado = avaliarComAConta(transacao);
         }
+        anexarCambio(transacao);
         return gravar(transacao, saldoAlterado);
     }
 
@@ -127,6 +133,23 @@ public class TransacaoService
                 : EnumSet.of(consulta.tipo());
 
         return repositorio.listar(consulta.usuarioId(), inicio, fim, tipos);
+    }
+
+    /**
+     * Guarda o câmbio do dia da transação em cada moeda, aprovada ou rejeitada. É informativo (dúvida 3):
+     * se a BrasilAPI não responder, a moeda fica sem cotação e a consulta mostra a conversão como indisponível.
+     */
+    private void anexarCambio(Transacao transacao) {
+        LocalDate diaDaTransacao = LocalDate.ofInstant(transacao.getCriadaEm(), FUSO);
+        for (MoedaEstrangeira moeda : MoedaEstrangeira.values()) {
+            try {
+                cambio.cotacao(moeda, diaDaTransacao).ifPresent(transacao::anexarCotacao);
+            } catch (RuntimeException e) {
+                // Proteção extra (dúvida 3): nenhuma falha de câmbio impede o registro da transação.
+                LOG.log(System.Logger.Level.WARNING, "Câmbio de {0} indisponível; transação registrada sem conversão ({1})",
+                        moeda, causaRaiz(e));
+            }
+        }
     }
 
     /**

@@ -23,6 +23,7 @@ import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -99,5 +100,46 @@ class TransacaoControllerTest {
                         .content("{ \"usuarioId\": 3, \"tipo\": \"DEPOSITO\", \"valor\": 10.555 }"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.campos.valor").exists());
+    }
+
+    @Test
+    void consultaMostraOValorEmRealEEmUsdEEurComTaxaEData() throws Exception {
+        Transacao compra = Transacao.reconstituir(18L, 3L, TipoTransacao.COMPRA, new BigDecimal("120.00"),
+                Categoria.ALIMENTACAO, null, null, Instant.parse("2026-11-10T14:39:13Z"),
+                StatusTransacao.APROVADA, null, java.util.List.of(
+                        new com.beca.transacoes.domain.model.Cotacao(com.beca.transacoes.domain.model.MoedaEstrangeira.USD,
+                                new BigDecimal("5.5146"), java.time.LocalDate.of(2026, 11, 9)),
+                        new com.beca.transacoes.domain.model.Cotacao(com.beca.transacoes.domain.model.MoedaEstrangeira.EUR,
+                                new BigDecimal("6.1317"), java.time.LocalDate.of(2026, 11, 6))));
+        when(buscar.buscarPorId(18L)).thenReturn(compra);
+
+        mvc.perform(get("/transacoes/18"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valor").value(120.0))
+                .andExpect(jsonPath("$.moeda").value("BRL"))
+                .andExpect(jsonPath("$.conversoes[0].moeda").value("USD"))
+                .andExpect(jsonPath("$.conversoes[0].disponivel").value(true))
+                .andExpect(jsonPath("$.conversoes[0].valor").value(21.76))
+                .andExpect(jsonPath("$.conversoes[0].taxa").value(5.5146))
+                .andExpect(jsonPath("$.conversoes[0].dataCotacao").value("2026-11-09"))
+                .andExpect(jsonPath("$.conversoes[1].moeda").value("EUR"))
+                .andExpect(jsonPath("$.conversoes[1].valor").value(19.57))
+                .andExpect(jsonPath("$.conversoes[1].dataCotacao").value("2026-11-06"));
+    }
+
+    @Test
+    void semCotacaoAConsultaRespondeComAConversaoIndisponivel() throws Exception {
+        Transacao semCambio = Transacao.reconstituir(21L, 3L, TipoTransacao.COMPRA, new BigDecimal("10.00"),
+                Categoria.ALIMENTACAO, null, null, Instant.parse("2026-11-10T18:33:22Z"),
+                StatusTransacao.APROVADA, null);
+        when(buscar.buscarPorId(21L)).thenReturn(semCambio);
+
+        mvc.perform(get("/transacoes/21"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APROVADA"))
+                .andExpect(jsonPath("$.conversoes[0].moeda").value("USD"))
+                .andExpect(jsonPath("$.conversoes[0].disponivel").value(false))
+                .andExpect(jsonPath("$.conversoes[0].valor").doesNotExist())
+                .andExpect(jsonPath("$.conversoes[1].disponivel").value(false));
     }
 }

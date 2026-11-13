@@ -16,6 +16,7 @@ import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 
 /**
  * Tabela do transacoes_db. O usuario_id é só um número: o MS2 não tem chave estrangeira
@@ -61,6 +62,19 @@ public class TransacaoEntity {
     @Column(name = "criada_em", nullable = false, updatable = false)
     private Instant criadaEm;
 
+    /** Câmbio guardado no registro; nulo quando a BrasilAPI não respondeu. */
+    @Column(name = "cotacao_usd", precision = 12, scale = 6, updatable = false)
+    private BigDecimal cotacaoUsd;
+
+    @Column(name = "data_cotacao_usd", updatable = false)
+    private LocalDate dataCotacaoUsd;
+
+    @Column(name = "cotacao_eur", precision = 12, scale = 6, updatable = false)
+    private BigDecimal cotacaoEur;
+
+    @Column(name = "data_cotacao_eur", updatable = false)
+    private LocalDate dataCotacaoEur;
+
     protected TransacaoEntity() {
     }
 
@@ -79,6 +93,15 @@ public class TransacaoEntity {
         this.criadaEm = criadaEm;
     }
 
+    public TransacaoEntity comCambio(BigDecimal cotacaoUsd, LocalDate dataCotacaoUsd,
+                                     BigDecimal cotacaoEur, LocalDate dataCotacaoEur) {
+        this.cotacaoUsd = cotacaoUsd;
+        this.dataCotacaoUsd = dataCotacaoUsd;
+        this.cotacaoEur = cotacaoEur;
+        this.dataCotacaoEur = dataCotacaoEur;
+        return this;
+    }
+
     public Long getId() { return id; }
     public Long getUsuarioId() { return usuarioId; }
     public TipoTransacao getTipo() { return tipo; }
@@ -89,4 +112,8 @@ public class TransacaoEntity {
     public StatusTransacao getStatus() { return status; }
     public MotivoRejeicao getMotivoRejeicao() { return motivoRejeicao; }
     public Instant getCriadaEm() { return criadaEm; }
+    public BigDecimal getCotacaoUsd() { return cotacaoUsd; }
+    public LocalDate getDataCotacaoUsd() { return dataCotacaoUsd; }
+    public BigDecimal getCotacaoEur() { return cotacaoEur; }
+    public LocalDate getDataCotacaoEur() { return dataCotacaoEur; }
 }

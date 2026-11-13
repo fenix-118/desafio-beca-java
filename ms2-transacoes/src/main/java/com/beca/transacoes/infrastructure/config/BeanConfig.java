@@ -1,5 +1,6 @@
 package com.beca.transacoes.infrastructure.config;
 
+import com.beca.transacoes.application.port.out.CambioPort;
 import com.beca.transacoes.application.port.out.ContaPort;
 import com.beca.transacoes.application.port.out.TransacaoRepositoryPort;
 import com.beca.transacoes.application.port.out.UsuarioPort;
@@ -21,8 +22,8 @@ public class BeanConfig {
 
     @Bean
     public TransacaoService transacaoService(TransacaoRepositoryPort repositorio, ContaPort conta,
-                                             UsuarioPort usuarios, Clock relogio) {
-        return new TransacaoService(repositorio, conta, usuarios, relogio);
+                                             UsuarioPort usuarios, CambioPort cambio, Clock relogio) {
+        return new TransacaoService(repositorio, conta, usuarios, cambio, relogio);
     }
 
     @Bean

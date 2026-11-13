@@ -300,6 +300,48 @@ class TransacaoTest {
         }
     }
 
+    @Nested
+    class Cambio {
+
+        private final Cotacao dolar = new Cotacao(MoedaEstrangeira.USD, new BigDecimal("5.5146"),
+                java.time.LocalDate.of(2026, 11, 9));
+
+        @Test
+        void guardaACotacaoNoRegistro() {
+            Transacao t = compra("120.00");
+            t.anexarCotacao(dolar);
+
+            assertThat(t.cotacao(MoedaEstrangeira.USD)).contains(dolar);
+            assertThat(t.cotacao(MoedaEstrangeira.EUR)).isEmpty();
+        }
+
+        @Test
+        void naoTrocaACotacaoJaGuardada() {
+            Transacao t = compra("120.00");
+            t.anexarCotacao(dolar);
+
+            assertThatThrownBy(() -> t.anexarCotacao(dolar)).isInstanceOf(TransicaoDeStatusInvalidaException.class);
+        }
+
+        @Test
+        void transacaoJaGravadaNaoRecebeCotacao() {
+            Transacao gravada = Transacao.reconstituir(7L, USUARIO, TipoTransacao.COMPRA, new BigDecimal("20.00"),
+                    Categoria.LAZER, null, null, java.time.Instant.EPOCH, StatusTransacao.APROVADA, null);
+
+            assertThatThrownBy(() -> gravada.anexarCotacao(dolar))
+                    .isInstanceOf(TransicaoDeStatusInvalidaException.class);
+        }
+
+        @Test
+        void reconstituirTrazAsCotacoesGuardadas() {
+            Transacao gravada = Transacao.reconstituir(7L, USUARIO, TipoTransacao.COMPRA, new BigDecimal("20.00"),
+                    Categoria.LAZER, null, null, java.time.Instant.EPOCH, StatusTransacao.APROVADA, null,
+                    java.util.List.of(dolar));
+
+            assertThat(gravada.getCotacoes()).containsExactly(dolar);
+        }
+    }
+
     @Test
     void situacaoContaRecusaValoresNegativosOuNulos() {
         assertThatThrownBy(() -> new SituacaoConta(new BigDecimal("-1"), BigDecimal.ONE, BigDecimal.ONE))
