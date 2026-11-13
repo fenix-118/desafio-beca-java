@@ -9,7 +9,6 @@ import com.beca.transacoes.domain.model.ResumoDespesas;
 import com.beca.transacoes.domain.model.StatusTransacao;
 import com.beca.transacoes.domain.model.TipoTransacao;
 import com.beca.transacoes.domain.model.Transacao;
-import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.AcessoNegadoException;
 import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.AutenticacaoBasicaFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,7 +54,7 @@ class DespesaControllerTest {
         when(consultar.consultar(new ConsultarDespesasQuery(3L, inicio, fim)))
                 .thenReturn(new ResumoDoPeriodo(3L, inicio, fim, resumo));
 
-        mvc.perform(get("/despesas/resumo").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L).param("usuarioId", "3")
+        mvc.perform(get("/despesas/resumo").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L)
                         .param("inicio", "2026-11-01").param("fim", "2026-11-30"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usuarioId").value(3))
@@ -77,7 +76,7 @@ class DespesaControllerTest {
     void periodoInvalidoResponde400() throws Exception {
         when(consultar.consultar(any())).thenThrow(new DadosInvalidosException("A data 'inicio' deve ser anterior ou igual à data 'fim'."));
 
-        mvc.perform(get("/despesas/resumo").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L).param("usuarioId", "3")
+        mvc.perform(get("/despesas/resumo").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L)
                         .param("inicio", "2026-11-30").param("fim", "2026-11-01"))
                 .andExpect(status().isBadRequest());
     }
@@ -90,7 +89,7 @@ class DespesaControllerTest {
                 .thenReturn(new ResumoDoPeriodo(3L, inicio, fim,
                         ResumoDespesas.calcular(List.of(), ZoneId.of("America/Sao_Paulo"))));
 
-        mvc.perform(get("/despesas/resumo").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L).param("usuarioId", "3"))
+        mvc.perform(get("/despesas/resumo").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.inicio").value("2026-11-01"))
                 .andExpect(jsonPath("$.fim").value("2026-11-30"))
@@ -99,17 +98,23 @@ class DespesaControllerTest {
     }
 
     @Test
-    void semUsuarioResponde400() throws Exception {
-        mvc.perform(get("/despesas/resumo").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L))
-                .andExpect(status().isBadRequest());
+    void semLoginResponde401() throws Exception {
+        mvc.perform(get("/despesas/resumo"))
+                .andExpect(status().isUnauthorized());
+        org.mockito.Mockito.verifyNoInteractions(consultar);
     }
 
     @Test
-    void resumoDeOutroUsuarioResponde403() throws Exception {
+    void usaOUsuarioDoLoginEIgnoraUsuarioIdNaQuery() throws Exception {
+        LocalDate inicio = LocalDate.of(2026, 11, 1);
+        LocalDate fim = LocalDate.of(2026, 11, 30);
+        when(consultar.consultar(new ConsultarDespesasQuery(4L, null, null)))
+                .thenReturn(new ResumoDoPeriodo(4L, inicio, fim,
+                        ResumoDespesas.calcular(List.of(), ZoneId.of("America/Sao_Paulo"))));
+
         mvc.perform(get("/despesas/resumo").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 4L)
                         .param("usuarioId", "3"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.detail").value(AcessoNegadoException.MENSAGEM));
-        org.mockito.Mockito.verifyNoInteractions(consultar);
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usuarioId").value(4));
     }
 }

@@ -58,7 +58,7 @@ TRANSACOES=(
 # Consultar o saldo antes aquece a conexão e confirma que o usuário tem conta na Mock.
 echo "== MS2: conferindo a conta do usuário $USUARIO na API Mock"
 for tentativa in 1 2 3; do
-  codigo_saldo="$(curl -sS -o /dev/null -w '%{http_code}' "${LOGIN[@]}" "$MS2_URL/contas/$USUARIO/saldo" || true)"
+  codigo_saldo="$(curl -sS -o /dev/null -w '%{http_code}' "${LOGIN[@]}" "$MS2_URL/contas/saldo" || true)"
   [ "$codigo_saldo" = "200" ] && break
   echo "   tentativa $tentativa: HTTP $codigo_saldo"
   sleep 2
@@ -72,7 +72,7 @@ echo "   conta encontrada"
 echo "== MS2: registrando transações do usuário $USUARIO"
 for linha in "${TRANSACOES[@]}"; do
   IFS='|' read -r tipo valor categoria destino descricao <<< "$linha"
-  corpo="{\"usuarioId\": $USUARIO, \"tipo\": \"$tipo\", \"valor\": $valor"
+  corpo="{\"tipo\": \"$tipo\", \"valor\": $valor"
   [ -n "$categoria" ] && corpo="$corpo, \"categoria\": \"$categoria\""
   [ -n "$destino" ] && corpo="$corpo, \"usuarioDestinoId\": $destino"
   corpo="$corpo, \"descricao\": \"$descricao\"}"
@@ -90,8 +90,8 @@ for linha in "${TRANSACOES[@]}"; do
 done
 
 echo "== MS2: saldo do usuário $USUARIO"
-curl -sS "${LOGIN[@]}" "$MS2_URL/contas/$USUARIO/saldo"
+curl -sS "${LOGIN[@]}" "$MS2_URL/contas/saldo"
 echo
 echo "== MS2: resumo de despesas do mês atual"
-curl -sS "${LOGIN[@]}" "$MS2_URL/despesas/resumo?usuarioId=$USUARIO"
+curl -sS "${LOGIN[@]}" "$MS2_URL/despesas/resumo"
 echo

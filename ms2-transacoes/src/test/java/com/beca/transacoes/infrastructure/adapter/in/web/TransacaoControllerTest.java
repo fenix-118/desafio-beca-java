@@ -11,9 +11,11 @@ import com.beca.transacoes.domain.model.MotivoRejeicao;
 import com.beca.transacoes.domain.model.StatusTransacao;
 import com.beca.transacoes.domain.model.TipoTransacao;
 import com.beca.transacoes.domain.model.Transacao;
-import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.AcessoNegadoException;
 import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.AutenticacaoBasicaFilter;
+import com.beca.transacoes.application.port.in.ListarTransacoesUseCase.ListarTransacoesQuery;
+import com.beca.transacoes.application.port.in.RegistrarTransacaoUseCase.RegistrarTransacaoCommand;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -23,7 +25,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -36,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TransacaoControllerTest {
 
     private static final String TRANSFERENCIA = """
-            { "usuarioId": 3, "tipo": "TRANSFERENCIA", "valor": 10, "categoria": "OUTROS", "usuarioDestinoId": 9999 }
+            { "tipo": "TRANSFERENCIA", "valor": 10, "categoria": "OUTROS", "usuarioDestinoId": 9999 }
             """;
 
     @Autowired
@@ -56,7 +60,7 @@ class TransacaoControllerTest {
         when(registrar.registrar(any())).thenThrow(new UsuarioNaoEncontradoException(9999L));
 
         mvc.perform(post("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 9999L).contentType(MediaType.APPLICATION_JSON)
-                        .content("{ \"usuarioId\": 9999, \"tipo\": \"DEPOSITO\", \"valor\": 10 }"))
+                        .content("{ \"tipo\": \"DEPOSITO\", \"valor\": 10 }"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail").value("Usuário 9999 não encontrado."));
     }
@@ -99,7 +103,7 @@ class TransacaoControllerTest {
     @Test
     void corpoInvalidoResponde400ComOCampo() throws Exception {
         mvc.perform(post("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 3L).contentType(MediaType.APPLICATION_JSON)
-                        .content("{ \"usuarioId\": 3, \"tipo\": \"DEPOSITO\", \"valor\": 10.555 }"))
+                        .content("{ \"tipo\": \"DEPOSITO\", \"valor\": 10.555 }"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.campos.valor").exists());
     }
@@ -148,12 +152,28 @@ class TransacaoControllerTest {
     // ---------- autorização (tarefa 6.3) ----------
 
     @Test
-    void registrarParaOutroUsuarioResponde403() throws Exception {
+    void registraSempreParaOUsuarioDoLoginMesmoComUsuarioIdNoCorpo() throws Exception {
+        Transacao deposito = Transacao.reconstituir(30L, 4L, TipoTransacao.DEPOSITO, new BigDecimal("10.00"),
+                null, null, null, Instant.parse("2026-11-13T13:00:00Z"), StatusTransacao.APROVADA, null);
+        when(registrar.registrar(any())).thenReturn(deposito);
+
+        // Um usuarioId no corpo não faz parte do pedido e é ignorado: vale o usuário do login.
         mvc.perform(post("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 4L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{ \"usuarioId\": 3, \"tipo\": \"DEPOSITO\", \"valor\": 10 }"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.detail").value(AcessoNegadoException.MENSAGEM));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.usuarioId").value(4));
+
+        ArgumentCaptor<RegistrarTransacaoCommand> comando = ArgumentCaptor.forClass(RegistrarTransacaoCommand.class);
+        verify(registrar).registrar(comando.capture());
+        assertThat(comando.getValue().usuarioId()).isEqualTo(4L);
+    }
+
+    @Test
+    void registrarSemLoginResponde401() throws Exception {
+        mvc.perform(post("/transacoes").contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"tipo\": \"DEPOSITO\", \"valor\": 10 }"))
+                .andExpect(status().isUnauthorized());
         org.mockito.Mockito.verifyNoInteractions(registrar);
     }
 
@@ -169,16 +189,20 @@ class TransacaoControllerTest {
     }
 
     @Test
-    void listarTransacoesDeOutroUsuarioResponde403() throws Exception {
+    void listarUsaOUsuarioDoLoginEIgnoraUsuarioIdNaQuery() throws Exception {
+        when(listar.listar(any())).thenReturn(java.util.List.of());
+
         mvc.perform(get("/transacoes").requestAttr(AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, 4L)
                         .param("usuarioId", "3"))
-                .andExpect(status().isForbidden());
-        org.mockito.Mockito.verifyNoInteractions(listar);
+                .andExpect(status().isOk());
+
+        verify(listar).listar(new ListarTransacoesQuery(4L, null, null, null));
     }
 
     @Test
     void semUsuarioAutenticadoResponde401() throws Exception {
-        mvc.perform(get("/transacoes").param("usuarioId", "3"))
+        mvc.perform(get("/transacoes"))
                 .andExpect(status().isUnauthorized());
+        org.mockito.Mockito.verifyNoInteractions(listar);
     }
 }

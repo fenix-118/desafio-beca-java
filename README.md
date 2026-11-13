@@ -120,11 +120,11 @@ Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação
 
 | Método e rota | O que faz |
 |---|---|
-| `POST /transacoes` | Registra depósito, retirada, transferência ou compra e responde 201 com o status (`APROVADA` ou `REJEITADA`, com o motivo) |
+| `POST /transacoes` | Registra depósito, retirada, transferência ou compra do usuário do login e responde 201 com o status (`APROVADA` ou `REJEITADA`, com o motivo) |
 | `GET /transacoes/{id}` | Consulta uma transação |
-| `GET /transacoes?usuarioId=1&inicio=2026-11-01&fim=2026-11-30&tipo=COMPRA` | Lista as transações do usuário; período e tipo são opcionais |
-| `GET /contas/{usuarioId}/saldo` | Saldo e limites lidos da API Mock no momento, o gasto de hoje e quanto ainda pode sair |
-| `GET /despesas/resumo?usuarioId=3&inicio=2026-11-01&fim=2026-11-30` | Análise de despesas: total por categoria, por dia e por mês, com o total geral; sem datas, usa o mês atual |
+| `GET /transacoes?inicio=2026-11-01&fim=2026-11-30&tipo=COMPRA` | Lista as transações do usuário do login; período e tipo são opcionais |
+| `GET /contas/saldo` | Saldo e limites do usuário do login, lidos da API Mock no momento, o gasto de hoje e quanto ainda pode sair |
+| `GET /despesas/resumo?inicio=2026-11-01&fim=2026-11-30` | Análise de despesas do usuário do login: total por categoria, por dia e por mês, com o total geral; sem datas, usa o mês atual |
 
 Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, transferência e compra) exigem categoria; transferência exige `usuarioDestinoId`; saídas são conferidas contra saldo, limite por transação e limite diário (dia no fuso de São Paulo); depósito não tem limite nem exige saldo, mas precisa da conta na Mock para ser creditado: sem conta, ou com a Mock fora do ar, ele é rejeitado.
 
@@ -172,7 +172,7 @@ Sem saldo confirmado, o MS2 nunca aprova às cegas (tempo limite de 2 s em cada 
 | Onde | Resposta |
 |---|---|
 | `POST /transacoes` (qualquer tipo) | 201, `REJEITADA` com `SERVICO_SALDO_INDISPONIVEL`; a transação fica gravada e a descrição explica o motivo |
-| `GET /contas/{usuarioId}/saldo` | 503, "Serviço de saldo indisponível; tente novamente em instantes." |
+| `GET /contas/saldo` | 503, "Serviço de saldo indisponível; tente novamente em instantes." |
 
 Para testar: troque `MOCKAPI_BASE_URL` no `.env` por um endereço inexistente (ex.: `https://invalido.mockapi.io/api/v1`), reinicie o MS2 e faça uma compra. Depois volte a URL certa.
 
@@ -240,17 +240,17 @@ Todas as rotas do MS2 pedem **login básico** (HTTP Basic) com o e-mail e a senh
 | MS1 `POST /usuarios` (cadastro) e `/usuarios/importacao` | Abertas |
 | MS1 `GET`, `PUT` e `DELETE /usuarios/{id}` | Login do **próprio** usuário; o `GET` também aceita o MS2, com o token de serviço (`X-Servico-Token`) |
 | MS1 `GET /usuarios` (lista de todos) | Removida: expunha o nome e o e-mail de todos os usuários |
-| MS2 `/transacoes`, `/contas/{usuarioId}/saldo`, `/despesas/resumo` | Login obrigatório; cada usuário só vê e registra as **próprias** transações |
+| MS2 `/transacoes`, `/contas/saldo`, `/despesas/resumo` | Login obrigatório. O usuário vem **sempre do login**: não há `usuarioId` no corpo nem na URL, então não dá para pedir ou registrar em nome de outro |
 | `/swagger-ui.html`, `/v3/api-docs`, `/actuator/health` (MS1 e MS2) | Abertas: documentação e health check do Compose |
 
 | Situação | Resposta |
 |---|---|
 | Sem login, ou login em formato errado | 401, com `WWW-Authenticate: Basic` |
 | E-mail inexistente ou senha errada | 401 "E-mail ou senha inválidos." (a mesma mensagem nos dois casos) |
-| `usuarioId` de outro usuário, ou transação de outro usuário | 403 |
+| `GET /transacoes/{id}` de uma transação de outro usuário | 403 |
 | MS1 fora do ar ao conferir o login | 503 |
 
-**No Swagger do MS2:** clique em **Authorize**, informe o e-mail e a senha do MS1 e depois use o **Try it out** normalmente. **Pelo terminal:** `curl -u email@example.com:senha "http://localhost:8082/contas/3/saldo"`.
+**No Swagger do MS2:** clique em **Authorize**, informe o e-mail e a senha do MS1 e depois use o **Try it out** normalmente. **Pelo terminal:** `curl -u email@example.com "http://localhost:8082/contas/saldo"` (só o e-mail: o `curl` pede a senha sem mostrar, e ela não fica no histórico).
 
 **Como o MS2 consulta o MS1:** para conferir o dono e o destino das transações, o MS2 chama `GET /usuarios/{id}` com o cabeçalho `X-Servico-Token`, que precisa ser igual ao `SERVICO_TOKEN` do MS1. O token só vale para essa consulta: alterar e excluir exigem o login do próprio usuário. Sem `SERVICO_TOKEN` no `.env`, os dois serviços param logo na subida com uma mensagem dizendo o que falta.
 

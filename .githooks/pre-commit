@@ -46,15 +46,24 @@ while IFS= read -r linha; do
         problemas+=("$arquivo: $conteudo")
       fi ;;
     *.yml|*.yaml|*.properties|*.env*|*.json|*.sh|*.xml|docker-compose*)
-      # Placeholders \${...} viram $ENV antes de conferir: "token: \${SERVICO_TOKEN:}" não é valor literal.
-      conteudo="$(sed -E 's/\$\{[^}]*\}/$ENV/g' <<< "$conteudo")"
+      # Variável de segredo com valor padrão literal ("\${SENHA:minhaSenha}", "\${TOKEN:-abc}") é segredo no Git.
+      if grep -qiE '\$\{[a-z0-9_]*(password|passwd|senha|secret|token|api_?key)[a-z0-9_]*:-?[^}?$:]' <<< "$conteudo" \
+          && ! grep -qiE ':-?(troque_aqui|changeme)\}' <<< "$conteudo"; then
+        problemas+=("$arquivo: $conteudo")
+        continue
+      fi
+      # Só o placeholder SEM valor padrão vira ${ENV} antes da checagem: \${VAR}, \${VAR:} e \${VAR:?mensagem},
+      # inclusive aninhado (\${A:\${B:}}). Qualquer outro valor continua sendo conferido.
+      for _ in 1 2 3; do
+        conteudo="$(sed -E 's/\$\{[A-Za-z0-9_]+(:-?(\$\{ENV\})?|:\?[^}]*)?\}/${ENV}/g' <<< "$conteudo")"
+      done
       valor="$(grep -oiE '(password|passwd|senha|secret|token|api[_-]?key)[a-z_]*["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[^"'"'"'[:space:]]+' <<< "$conteudo" \
         | head -1 | sed -E 's/^[^:=]*[:=][[:space:]]*["'"'"']?//')"
       if [ -n "$valor" ]; then
-        case "$valor" in
-          '${'*|'$'*|troque_aqui|changeme|'<'*) ;;   # placeholder ou variável de ambiente
-          *) problemas+=("$arquivo: $conteudo") ;;
-        esac
+        # Aceita só uma variável inteira (${ENV}, $VAR, ${VAR}) ou um valor de exemplo; "${X}abc" não passa.
+        if ! [[ $valor =~ ^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$ || $valor == troque_aqui || $valor == changeme || $valor == '<'* ]]; then
+          problemas+=("$arquivo: $conteudo")
+        fi
       fi ;;
   esac
 done < <(git diff --cached -U0 --no-color)

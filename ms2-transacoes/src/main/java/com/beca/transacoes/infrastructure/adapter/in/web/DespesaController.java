@@ -40,8 +40,8 @@ public class DespesaController {
         this.consultarDespesas = consultarDespesas;
     }
 
-    @Operation(summary = "Resumo das despesas do usuário no período",
-            description = "Soma só as saídas APROVADAS (retirada, transferência enviada e compra); depósitos e "
+    @Operation(summary = "Resumo das despesas do usuário do login no período",
+            description = "O usuário vem do login, não da URL. Soma só as saídas APROVADAS (retirada, transferência enviada e compra); depósitos e "
                     + "transações rejeitadas não entram. Traz o total por categoria, por dia e por mês. As datas são dias no fuso de São Paulo e o dia final é "
                     + "incluído. Sem 'inicio' e 'fim', usa o mês atual. Responde 400 se só uma das datas for informada "
                     + "ou se 'inicio' for depois de 'fim'.")
@@ -49,20 +49,18 @@ public class DespesaController {
     @ApiResponse(responseCode = "400", description = "Parâmetros inválidos",
             content = @Content(mediaType = "application/problem+json",
                     schema = @Schema(implementation = ProblemDetail.class)))
-    @ApiResponse(responseCode = "403", description = "Os dados são de outro usuário",
+    @ApiResponse(responseCode = "401", description = "Sem login ou login inválido",
             content = @Content(mediaType = "application/problem+json",
                     schema = @Schema(implementation = ProblemDetail.class)))
     @GetMapping("/resumo")
     public ResumoDespesasResponse resumo(
-            @Parameter(description = "Id do usuário", example = "3")
-            @RequestParam Long usuarioId,
             @Parameter(description = "Primeiro dia (aaaa-mm-dd); sem ele e sem 'fim', o mês atual", example = "2026-11-01")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @Parameter(description = "Último dia, incluído (aaaa-mm-dd)", example = "2026-11-30")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fim,
             @Parameter(hidden = true)
             @RequestAttribute(name = AutenticacaoBasicaFilter.ATRIBUTO_USUARIO, required = false) Long usuarioAutenticado) {
-        Dono.exigir(usuarioAutenticado, usuarioId);
+        Long usuarioId = Dono.usuarioDoLogin(usuarioAutenticado);
         ResumoDoPeriodo r = consultarDespesas.consultar(new ConsultarDespesasQuery(usuarioId, inicio, fim));
         ResumoDespesas resumo = r.resumo();
         return new ResumoDespesasResponse(r.usuarioId(), r.inicio(), r.fim(), MOEDA_BASE,

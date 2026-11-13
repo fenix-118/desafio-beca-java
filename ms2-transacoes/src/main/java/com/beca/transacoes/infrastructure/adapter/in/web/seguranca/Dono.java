@@ -8,16 +8,28 @@ public final class Dono {
 
     /**
      * @param usuarioAutenticado id que o filtro de autenticação guardou na requisição
-     * @param usuarioDoRecurso   dono do que está sendo pedido (parâmetro, corpo ou transação)
+     * @param usuarioDoRecurso   dono do que está sendo pedido (ex.: a transação buscada pelo id)
      * @throws NaoAutenticadoException se não houver usuário autenticado
      * @throws AcessoNegadoException   se o recurso for de outro usuário
      */
     public static void exigir(Long usuarioAutenticado, Long usuarioDoRecurso) {
-        if (usuarioAutenticado == null) {
-            throw new NaoAutenticadoException();
-        }
+        usuarioDoLogin(usuarioAutenticado);
         if (usuarioDoRecurso != null && !usuarioAutenticado.equals(usuarioDoRecurso)) {
             throw new AcessoNegadoException();
         }
+    }
+
+    /**
+     * O usuário das rotas do MS2 vem sempre do login, nunca do corpo nem da query: assim não há como pedir
+     * ou registrar algo em nome de outro.
+     *
+     * @return o id que o filtro de autenticação guardou na requisição
+     * @throws NaoAutenticadoException se não houver usuário autenticado
+     */
+    public static Long usuarioDoLogin(Long usuarioAutenticado) {
+        if (usuarioAutenticado == null) {
+            throw new NaoAutenticadoException();
+        }
+        return usuarioAutenticado;
     }
 }
