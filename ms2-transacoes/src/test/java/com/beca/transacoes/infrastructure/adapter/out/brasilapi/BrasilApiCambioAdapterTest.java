@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.test.web.client.ResponseCreator;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
@@ -240,20 +241,48 @@ class BrasilApiCambioAdapterTest {
 
     @Test
     void respostaNumFormatoInesperadoViraConversaoIndisponivel() {
-        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
-                .andRespond(withSuccess("<html>manutenção</html>", MediaType.TEXT_HTML));
-        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+        // Um adaptador novo por caso: a falha fica em cache, e a mesma moeda e dia não seriam consultados de novo.
+        assertThat(cotacaoComResposta(withSuccess("<html>manutenção</html>", MediaType.TEXT_HTML))).isEmpty();
+        assertThat(cotacaoComResposta(withSuccess("{\"cotacoes\":[],\"moeda\":\"USD\",\"data\":\"2026-11-09\"}",
+                MediaType.APPLICATION_JSON))).isEmpty();
+        assertThat(cotacaoComResposta(withSuccess("{\"cotacoes\":[{\"cotacao_venda\":0,\"tipo_boletim\":\"FECHAMENTO PTAX\"}],"
+                + "\"moeda\":\"USD\",\"data\":\"2026-11-09\"}", MediaType.APPLICATION_JSON))).isEmpty();
+    }
 
-        api.reset();
-        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
-                .andRespond(withSuccess("{\"cotacoes\":[],\"moeda\":\"USD\",\"data\":\"2026-11-09\"}",
-                        MediaType.APPLICATION_JSON));
-        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+    private static Optional<Cotacao> cotacaoComResposta(ResponseCreator resposta) {
+        RestClient.Builder builder = RestClient.builder().baseUrl(API);
+        MockRestServiceServer servidor = MockRestServiceServer.bindTo(builder).build();
+        servidor.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09")).andRespond(resposta);
+        Optional<Cotacao> cotacao = new BrasilApiCambioAdapter(builder.build(), TERCA).cotacao(MoedaEstrangeira.USD, HOJE);
+        servidor.verify();
+        return cotacao;
+    }
 
-        api.reset();
-        api.expect(requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
-                .andRespond(withSuccess("{\"cotacoes\":[{\"cotacao_venda\":0,\"tipo_boletim\":\"FECHAMENTO PTAX\"}],"
-                        + "\"moeda\":\"USD\",\"data\":\"2026-11-09\"}", MediaType.APPLICATION_JSON));
-        assertThat(adapter.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+    @Test
+    void recusa4xxFicaEmCachePelaPausaSoParaAquelaMoedaEDia() {
+        RelogioAjustavel relogio = new RelogioAjustavel(Instant.parse("2026-11-10T19:00:00Z"));
+        RestClient.Builder builder = RestClient.builder().baseUrl(API);
+        MockRestServiceServer servidor = MockRestServiceServer.bindTo(builder).build();
+        BrasilApiCambioAdapter comRelogio = new BrasilApiCambioAdapter(builder.build(), relogio, Duration.ofMinutes(5));
+
+        servidor.expect(ExpectedCount.once(), requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+        servidor.expect(ExpectedCount.once(), requestTo(API + "/cambio/v1/cotacao/EUR/2026-11-09"))
+                .andRespond(withSuccess(EUR_DOMINGO_DEVOLVE_SEXTA, MediaType.APPLICATION_JSON));
+        assertThat(comRelogio.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+        assertThat(comRelogio.cotacao(MoedaEstrangeira.EUR, HOJE)).isPresent();
+
+        // Dentro dos 5 minutos, a mesma moeda e dia não chamam a API de novo.
+        relogio.avancar(Duration.ofMinutes(4));
+        assertThat(comRelogio.cotacao(MoedaEstrangeira.USD, HOJE)).isEmpty();
+        servidor.verify();
+
+        // Passados os 5 minutos, consulta de novo.
+        servidor.reset();
+        servidor.expect(ExpectedCount.once(), requestTo(API + "/cambio/v1/cotacao/USD/2026-11-09"))
+                .andRespond(withSuccess(USD_SEGUNDA, MediaType.APPLICATION_JSON));
+        relogio.avancar(Duration.ofMinutes(2));
+        assertThat(comRelogio.cotacao(MoedaEstrangeira.USD, HOJE)).isPresent();
+        servidor.verify();
     }
 }

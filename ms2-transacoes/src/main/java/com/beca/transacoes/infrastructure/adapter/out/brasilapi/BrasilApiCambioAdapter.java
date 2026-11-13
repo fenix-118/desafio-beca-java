@@ -27,8 +27,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * - fim de semana e feriado devolvem a cotação do dia útil anterior, então a data guardada é a da resposta;
  * - usa o boletim "FECHAMENTO PTAX" (valor de venda), a referência oficial do Banco Central.
  * Cotação de um dia passado não muda: fica em cache na memória para não repetir a chamada.
- * Se a BrasilAPI estiver fora do ar (sem conexão, tempo limite ou 5xx), as consultas ficam em pausa por alguns
- * minutos: nesse tempo a conversão sai indisponível na hora, sem esperar o tempo limite a cada transação.
+ * Falhas também ficam em cache, pelo mesmo tempo da pausa (5 minutos por padrão):
+ * - sem conexão, tempo limite ou 5xx: a BrasilAPI inteira fica em pausa, e nenhuma moeda é consultada;
+ * - recusa (4xx), resposta sem cotação ou num formato inesperado: só aquela moeda e dia deixam de ser consultados.
+ * Nos dois casos a conversão sai indisponível na hora, sem repetir a chamada a cada transação.
  */
 public class BrasilApiCambioAdapter implements CambioPort {
 
@@ -43,6 +45,8 @@ public class BrasilApiCambioAdapter implements CambioPort {
     private final Clock relogio;
     private final Duration pausaAposFalha;
     private final Map<String, Cotacao> cache = new ConcurrentHashMap<>();
+    /** Moeda e dia que falharam, e até quando não vale a pena consultar de novo (cache de falhas). */
+    private final Map<String, Instant> falhas = new ConcurrentHashMap<>();
     /** Até quando não vale a pena chamar a BrasilAPI, depois de uma falha de conexão. */
     private volatile Instant pausadaAte = Instant.MIN;
 
@@ -66,12 +70,22 @@ public class BrasilApiCambioAdapter implements CambioPort {
             return Optional.of(emCache);
         }
 
-        if (relogio.instant().isBefore(pausadaAte)) {
+        Instant agora = relogio.instant();
+        if (agora.isBefore(pausadaAte)) {
+            return Optional.empty();
+        }
+        Instant falhouAte = falhas.get(chave);
+        if (falhouAte != null && agora.isBefore(falhouAte)) {
             return Optional.empty();
         }
 
         Optional<Cotacao> cotacao = consultar(moeda, dataConsultada);
-        cotacao.ifPresent(c -> cache.put(chave, c));
+        if (cotacao.isPresent()) {
+            cache.put(chave, cotacao.get());
+            falhas.remove(chave);
+        } else {
+            falhas.put(chave, agora.plus(pausaAposFalha));
+        }
         return cotacao;
     }
 

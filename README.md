@@ -119,7 +119,17 @@ Cada transação mostra o valor em real e em **USD** e **EUR** (`conversoes`), c
 | Transação de hoje (ou data futura) consulta o **dia anterior** | A API responde 400 `NO_TODAY_DATE` para o dia atual |
 | A data guardada é a que vem na resposta | Em fim de semana ou feriado, a API devolve o último dia útil (ex.: domingo → sexta) |
 
-**BrasilAPI fora do ar** (ou qualquer falha: tempo limite de 2 s, erro 4xx/5xx, resposta inesperada): o câmbio é informativo e nunca quebra a transação. Ela é registrada normalmente, e a consulta responde com a moeda marcada como `"disponivel": false`. A consulta nunca chama a BrasilAPI (lê o que foi guardado no registro), então ela não cai por causa da API. Depois de uma falha de conexão (sem rede, tempo limite ou 5xx), a BrasilAPI fica **5 minutos sem ser chamada**: nesse tempo, as transações gravam na hora com a conversão indisponível, em vez de esperar 2 s por moeda a cada registro (ajustável em `brasilapi.pausa-apos-falha-segundos`). Cotações já guardadas em cache continuam valendo. Para testar, aponte `BRASILAPI_BASE_URL` no `.env` para um endereço inexistente (ex.: `https://invalido.brasilapi.com.br/api`) e reinicie o MS2.
+**BrasilAPI fora do ar** (ou qualquer falha: tempo limite de 2 s, erro 4xx/5xx, resposta inesperada): o câmbio é informativo e nunca quebra a transação. Ela é registrada normalmente, e a consulta responde com a moeda marcada como `"disponivel": false`. A consulta nunca chama a BrasilAPI (lê o que foi guardado no registro), então ela não cai por causa da API. As falhas também ficam em cache, para a transação não esperar a BrasilAPI de novo a cada registro.
+
+#### Pausa de 5 minutos e cache de falhas
+
+| Situação | O que fica em cache | Por quanto tempo | Efeito |
+|---|---|---|---|
+| Cotação encontrada | A cotação daquela moeda e dia | Até o MS2 reiniciar (cotação de dia passado não muda) | Não chama a BrasilAPI de novo |
+| Sem conexão, tempo limite (2 s) ou erro 5xx | A falha da **BrasilAPI inteira** (pausa) | 5 minutos | Nenhuma moeda é consultada; a conversão sai indisponível na hora, sem esperar 2 s por moeda |
+| Recusa 4xx, resposta sem cotação ou em formato inesperado | A falha **daquela moeda e dia** | 5 minutos | Só aquela moeda e dia deixam de ser consultados; as outras seguem normais |
+
+O tempo é ajustável em `brasilapi.pausa-apos-falha-segundos` (padrão `300`). Cotações já guardadas em cache continuam valendo durante a pausa. Passados os 5 minutos, a próxima transação consulta a BrasilAPI de novo. Para testar, aponte `BRASILAPI_BASE_URL` no `.env` para um endereço inexistente (ex.: `https://invalido.brasilapi.com.br/api`) e reinicie o MS2.
 
 ### API Mock fora do ar
 
