@@ -229,13 +229,15 @@ O esquema de cada serviço é criado pelas migrações do Flyway, em `src/main/r
 |---|---|---|
 | MS1 | `V1__cria_tabela_usuarios.sql` | `usuarios`, com a restrição `uk_usuarios_email` |
 | MS2 | `V1__cria_tabela_transacoes.sql` | `transacoes`, já com as colunas do câmbio (`cotacao_usd`, `cotacao_eur` e as datas), as restrições dos enums e o índice `idx_transacoes_usuario_data` |
+| MS2 | `V2__garante_colunas_do_cambio.sql` | As colunas do câmbio e o índice com `ADD COLUMN IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`, para o banco antigo que recebeu o baseline sem elas; num banco criado pela `V1`, não muda nada |
 
 | Situação do banco | O que o Flyway faz |
 |---|---|
-| Vazio (clone novo ou `docker compose down -v`) | Roda a `V1` e cria as tabelas |
-| Já tinha as tabelas, criadas pelo antigo `ddl-auto: update` | Registra a `V1` como aplicada (**baseline**) sem rodá-la; os dados ficam como estão |
+| Vazio (clone novo ou `docker compose down -v`) | Roda a `V1`, que cria as tabelas, e a `V2`, que não muda nada |
+| Já tinha as tabelas, criadas pelo antigo `ddl-auto: update` | Registra a `V1` como aplicada (**baseline**) sem rodá-la e roda a `V2`; os dados ficam como estão |
+| Antigo e de antes do câmbio (pedido 3), sem as colunas da cotação | O baseline sozinho deixaria o banco sem as colunas e o MS2 não subiria (`ddl-auto: validate`); a `V2` cria as que faltam |
 
-A `V1` foi escrita a partir do esquema real (`pg_dump -s`), com os mesmos tipos e nomes de restrição. As colunas do câmbio (pedido 3) entram na mesma `V1`, e não num `ALTER TABLE` separado, porque nenhum banco tinha rodado migração antes: a `V1` descreve o esquema completo de hoje, e os bancos que já existiam recebem o baseline. Uma mudança futura no banco entra como `V2__...sql`, nunca editando a `V1`. Para ver o histórico: `docker exec beca-postgres psql -U beca -d transacoes_db -c "select version, description, success from flyway_schema_history"`.
+A `V1` foi escrita a partir do esquema real (`pg_dump -s`), com os mesmos tipos e nomes de restrição. As colunas do câmbio (pedido 3) entram na mesma `V1`, e não num `ALTER TABLE` separado, porque nenhum banco tinha rodado migração antes: a `V1` descreve o esquema completo de hoje, e os bancos que já existiam recebem o baseline. Uma mudança no banco entra numa nova versão (`V2`, `V3`...), nunca editando uma migração já aplicada: o Flyway confere o checksum e o serviço não sobe se ela mudar. O `MigracoesFlywayTest` roda as migrações num H2 nos dois cenários: banco novo e banco antigo sem as colunas do câmbio. Para ver o histórico: `docker exec beca-postgres psql -U beca -d transacoes_db -c "select version, description, success from flyway_schema_history"`.
 
 ## Testes e cobertura
 
