@@ -212,6 +212,62 @@ Exemplo de resposta:
 }
 ```
 
+## Testes e cobertura
+
+```bash
+cd ms1-usuarios && mvn clean test
+cd ../ms2-transacoes && mvn clean test
+```
+
+Pelo IntelliJ: painel **Maven** → módulo → **Lifecycle** → `clean` + `test`. Cada build gera o relatório de cobertura do JaCoCo em `target/site/jacoco/index.html` (abra no navegador): a cobertura por pacote e por classe, e as linhas cobertas e não cobertas de cada arquivo. As classes `*Application` ficam de fora, porque só sobem o Spring.
+
+## Segurança e segredos
+
+Revisão feita em 11/11/2026 (tarefa 8.7), em **todo o histórico** do Git, não só na versão atual:
+
+| O que foi conferido | Resultado |
+|---|---|
+| Arquivos `.env`, `.pem`, `.key`, `.p12`, `.jks` em algum commit | Nenhum; o `.gitignore` bloqueia todos, menos o `.env.example` |
+| Senha, token ou chave com valor literal em código ou configuração | Nenhum; `application.yml` e `docker-compose.yml` só usam `${...}` |
+| URL real da API Mock (com o id do projeto) | Nenhuma; fica só no `.env` |
+| `.env.example` | Só valores de exemplo (`troque_aqui`, `SEU_ID`) |
+| Senhas nos CSVs de `samples/` e nos testes | Fictícias, de propósito (`Exemplo#2026a`, `Senha@123`) |
+| Senha nas respostas e nos logs | Fora: a resposta de usuário não tem senha, o `toString` dos pedidos mascara a senha e o log de violação no banco grava só o nome da restrição |
+| Actuator | Só `/actuator/health` exposto |
+| Containers | Portas só em `127.0.0.1`, `no-new-privileges` e `cap_drop: ALL` |
+
+### Como refazer a revisão
+
+Os comandos abaixo varrem **todos os commits de todas as branches** (`--all`), não só a versão atual dos arquivos. Rode na raiz do projeto, no Git Bash:
+
+```bash
+# 1. Arquivos de segredo que já foram versionados alguma vez (o esperado é não aparecer nada)
+git log --all --name-only --format= | sort -u | grep -iE '\.env$|\.pem$|\.key$|\.p12$|\.jks$|secret|credential'
+
+# 2. Senha, token ou chave com valor literal em arquivos de configuração (ignora ${...} e troque_aqui)
+git log --all -p -- '*.yml' '*.yaml' '*.properties' '*.env*' 'docker-compose*' '*.json' | grep -E '^\+' \
+  | grep -iE '(password|senha|secret|token|api[_-]?key)[a-z_]*["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[^"'"'"'$?{[:space:]][^"'"'"'[:space:]]{5,}' \
+  | grep -viE 'troque_aqui'
+
+# 3. URL real da API Mock (com o id do projeto) em algum commit
+git log --all -p | grep -oE '[a-z0-9]{16,}\.mockapi\.io' | sort -u
+
+# 4. Chaves privadas
+git log --all -p | grep -cE '^\+-----BEGIN [A-Z ]*PRIVATE KEY-----'
+```
+
+Resultado em 11/11/2026: **nada** nos comandos 1, 2 e 3, e `0` no 4. O comando 2 foi conferido com um caso de teste (`password: minhaSenha123` é encontrado; `password: ${...}` e `troque_aqui` não). Senhas em código Java e nos testes ficam a cargo do hook abaixo.
+
+### Hook de pre-commit versionado
+
+O `.githooks/pre-commit` barra o commit quando encontra um arquivo de segredo, uma senha literal em configuração, uma chave privada ou a URL real da Mock. Ele aceita placeholders (`${...}`) e os valores de exemplo, e ignora `src/test/` e `samples/`. Ative uma vez em cada clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Em um falso positivo confirmado, `git commit --no-verify` pula a checagem só daquele commit.
+
 ## Tecnologias
 
 Java, Spring Boot, JPA, PostgreSQL, Docker Compose, JUnit, Mockito, Swagger/OpenAPI.
