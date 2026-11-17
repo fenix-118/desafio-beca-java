@@ -2,6 +2,7 @@ package com.beca.transacoes.application.service;
 
 import com.beca.transacoes.application.port.in.ListarTransacoesUseCase.ListarTransacoesQuery;
 import com.beca.transacoes.application.port.in.RegistrarTransacaoUseCase.RegistrarTransacaoCommand;
+import com.beca.transacoes.application.port.out.CambioPort;
 import com.beca.transacoes.application.port.out.ContaPort;
 import com.beca.transacoes.application.port.out.ServicoSaldoIndisponivelException;
 import com.beca.transacoes.application.port.out.ServicoUsuariosIndisponivelException;
@@ -11,6 +12,8 @@ import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
 import com.beca.transacoes.domain.exception.UsuarioNaoEncontradoException;
 import com.beca.transacoes.domain.model.Categoria;
+import com.beca.transacoes.domain.model.Cotacao;
+import com.beca.transacoes.domain.model.MoedaEstrangeira;
 import com.beca.transacoes.domain.model.MotivoRejeicao;
 import com.beca.transacoes.domain.model.SituacaoConta;
 import com.beca.transacoes.domain.model.StatusTransacao;
@@ -68,11 +71,15 @@ class TransacaoServiceTest {
     @Mock
     private UsuarioPort usuarios;
 
+    /** Sem stub, o Mockito devolve Optional.empty(): a conversão fica indisponível e nada quebra. */
+    @Mock
+    private CambioPort cambio;
+
     private TransacaoService service;
 
     @BeforeEach
     void setUp() {
-        service = new TransacaoService(repositorio, conta, usuarios, Clock.fixed(AGORA, ZoneOffset.UTC));
+        service = new TransacaoService(repositorio, conta, usuarios, cambio, Clock.fixed(AGORA, ZoneOffset.UTC));
     }
 
     /** O MS1 confirma que estes usuários existem. */
@@ -324,6 +331,59 @@ class TransacaoServiceTest {
         assertThat(t.getMotivoRejeicao()).isEqualTo(MotivoRejeicao.CONTA_INEXISTENTE);
         assertThat(gravada()).isSameAs(t);
         verify(repositorio, never()).somarSaidasAprovadas(anyLong(), any(), any());
+    }
+
+    // ---------- câmbio (BJ-17) ----------
+
+    @Test
+    void guardaACotacaoDeUsdEEurDoDiaDaTransacaoMesmoQuandoRejeitada() {
+        usuariosExistem(1L);
+        salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
+        when(repositorio.somarSaidasAprovadas(anyLong(), any(), any())).thenReturn(BigDecimal.ZERO);
+        Cotacao dolar = new Cotacao(MoedaEstrangeira.USD, new BigDecimal("5.5146"), java.time.LocalDate.of(2026, 11, 9));
+        Cotacao euro = new Cotacao(MoedaEstrangeira.EUR, new BigDecimal("6.1317"), java.time.LocalDate.of(2026, 11, 6));
+        when(cambio.cotacao(eq(MoedaEstrangeira.USD), any())).thenReturn(Optional.of(dolar));
+        when(cambio.cotacao(eq(MoedaEstrangeira.EUR), any())).thenReturn(Optional.of(euro));
+
+        Transacao t = service.registrar(saida(TipoTransacao.COMPRA, "600.00")); // acima do limite: rejeitada
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.REJEITADA);
+        assertThat(gravada().getCotacoes()).containsExactlyInAnyOrder(dolar, euro);
+        java.time.LocalDate diaEmSp = java.time.LocalDate.ofInstant(t.getCriadaEm(), java.time.ZoneId.of("America/Sao_Paulo"));
+        verify(cambio).cotacao(MoedaEstrangeira.USD, diaEmSp);
+        verify(cambio).cotacao(MoedaEstrangeira.EUR, diaEmSp);
+    }
+
+    @Test
+    void semCotacaoATransacaoEGravadaDoMesmoJeito() {
+        usuariosExistem(1L);
+        salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
+
+        Transacao t = service.registrar(new RegistrarTransacaoCommand(
+                1L, TipoTransacao.DEPOSITO, BigDecimal.TEN, null, null, null));
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.APROVADA);
+        assertThat(t.getCotacoes()).isEmpty();
+        assertThat(gravada()).isSameAs(t);
+    }
+
+    @Test
+    void falhaInesperadaNoCambioNaoImpedeORegistro() {
+        usuariosExistem(1L);
+        salvarDevolveOMesmo();
+        when(conta.consultar(1L)).thenReturn(Optional.of(CONTA));
+        when(cambio.cotacao(eq(MoedaEstrangeira.USD), any())).thenThrow(new IllegalStateException("bug no adaptador"));
+        Cotacao euro = new Cotacao(MoedaEstrangeira.EUR, new BigDecimal("6.1317"), java.time.LocalDate.of(2026, 11, 6));
+        when(cambio.cotacao(eq(MoedaEstrangeira.EUR), any())).thenReturn(Optional.of(euro));
+
+        Transacao t = service.registrar(new RegistrarTransacaoCommand(
+                1L, TipoTransacao.DEPOSITO, BigDecimal.TEN, null, null, null));
+
+        assertThat(t.getStatus()).isEqualTo(StatusTransacao.APROVADA);
+        assertThat(t.getCotacoes()).containsExactly(euro);
+        assertThat(gravada()).isSameAs(t);
     }
 
     // ---------- validação do usuário no MS1 ----------

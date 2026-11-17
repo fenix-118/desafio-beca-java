@@ -1,6 +1,8 @@
 package com.beca.transacoes.infrastructure.adapter.out.persistence;
 
 import com.beca.transacoes.application.port.out.TransacaoRepositoryPort;
+import com.beca.transacoes.domain.model.Cotacao;
+import com.beca.transacoes.domain.model.MoedaEstrangeira;
 import com.beca.transacoes.domain.model.StatusTransacao;
 import com.beca.transacoes.domain.model.TipoTransacao;
 import com.beca.transacoes.domain.model.Transacao;
@@ -8,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -64,12 +67,24 @@ public class TransacaoPersistenceAdapter implements TransacaoRepositoryPort {
     }
 
     static TransacaoEntity paraEntidade(Transacao t) {
+        Optional<Cotacao> usd = t.cotacao(MoedaEstrangeira.USD);
+        Optional<Cotacao> eur = t.cotacao(MoedaEstrangeira.EUR);
         return new TransacaoEntity(t.getId(), t.getUsuarioId(), t.getTipo(), t.getValor(), t.getCategoria(),
-                t.getUsuarioDestinoId(), t.getDescricao(), t.getStatus(), t.getMotivoRejeicao(), t.getCriadaEm());
+                t.getUsuarioDestinoId(), t.getDescricao(), t.getStatus(), t.getMotivoRejeicao(), t.getCriadaEm())
+                .comCambio(usd.map(Cotacao::taxa).orElse(null), usd.map(Cotacao::data).orElse(null),
+                        eur.map(Cotacao::taxa).orElse(null), eur.map(Cotacao::data).orElse(null));
     }
 
     static Transacao paraDominio(TransacaoEntity e) {
+        List<Cotacao> cotacoes = new ArrayList<>();
+        if (e.getCotacaoUsd() != null && e.getDataCotacaoUsd() != null) {
+            cotacoes.add(new Cotacao(MoedaEstrangeira.USD, e.getCotacaoUsd(), e.getDataCotacaoUsd()));
+        }
+        if (e.getCotacaoEur() != null && e.getDataCotacaoEur() != null) {
+            cotacoes.add(new Cotacao(MoedaEstrangeira.EUR, e.getCotacaoEur(), e.getDataCotacaoEur()));
+        }
         return Transacao.reconstituir(e.getId(), e.getUsuarioId(), e.getTipo(), e.getValor(), e.getCategoria(),
-                e.getUsuarioDestinoId(), e.getDescricao(), e.getCriadaEm(), e.getStatus(), e.getMotivoRejeicao());
+                e.getUsuarioDestinoId(), e.getDescricao(), e.getCriadaEm(), e.getStatus(), e.getMotivoRejeicao(),
+                cotacoes);
     }
 }

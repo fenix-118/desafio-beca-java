@@ -31,6 +31,7 @@ Depois, preencha os valores no `.env`:
 | `POSTGRES_PASSWORD` | Sim | Senha do PostgreSQL |
 | `MOCKAPI_BASE_URL` | Sim, para o MS2 | URL base da API Mock (recurso `contas`); sem ela o MS2 não sobe |
 | `MS1_BASE_URL` | Não | Endereço do MS1 usado pelo MS2 (padrão `http://localhost:8081`) |
+| `BRASILAPI_BASE_URL` | Não | URL base da BrasilAPI, usada no câmbio (padrão `https://brasilapi.com.br/api`) |
 
 ### 2. Subir o banco
 
@@ -97,7 +98,7 @@ Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, tr
 >
 > Quem atualiza o saldo é o MS2: depois de passar nas regras, ele grava o novo saldo na Mock (`PUT /contas/{id}`) e só então aprova. Depósito soma, saída subtrai. Se o `PUT` falhar, a transação fica `REJEITADA` com `SERVICO_SALDO_INDISPONIVEL`.
 >
-> **Transferência debita só quem envia (proposital).** O destino pode não ter conta na Mock, e creditar o destino exigiria um segundo `PUT` sem como desfazer os dois juntos. A transferência fica registrada com `usuarioDestinoId`; creditar o destino está como proposta para o PO.
+>  **Transferência ainda debita só quem envia (limitação conhecida).** A decisão do PO é que a transferência credite o destino, senão o dinheiro sai de uma conta e não entra em outra. A transferência fica registrada com `usuarioDestinoId`, mas o saldo do destino na Mock não muda. A implementação proposta segue o mesmo padrão de compensação já usado no MS2: conferir a conta do destino na Mock antes de qualquer `PUT`, debitar quem envia, creditar o destino e, se o crédito falhar, devolver o saldo de quem envia (com log de `AJUSTE MANUAL` se a devolução também falhar).
 
 ### Limitações conhecidas (e como resolveríamos)
 
@@ -105,6 +106,30 @@ Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, tr
 |---|---|---|---|
 | **Concorrência** | Duas saídas ao mesmo tempo do mesmo usuário leem o mesmo saldo; a segunda sobrescreve a primeira no `PUT` (atualização perdida) e as duas podem passar no limite diário | Nada no código: documentado | Trava por conta (ex.: `SELECT ... FOR UPDATE` num registro do usuário), versão otimista na conta (`If-Match`/versão) ou o saldo como soma das transações no próprio banco |
 | **Mock e banco sem transação única** | O `PUT` na Mock acontece antes de gravar; se a gravação falhar, o saldo já mudou sem registro | Log de erro com a conta e o saldo (anterior → novo) e tentativa de voltar o saldo anterior; se não der, log `AJUSTE MANUAL` | Padrão *outbox*/saga: gravar a transação como pendente, atualizar o saldo e confirmar, com reprocessamento |
+| **Transferência sem crédito no destino** | O valor sai de quem envia e não entra no destino | Documentado; a decisão do PO é creditar o destino | Debitar quem envia, creditar o destino e, se o crédito falhar, devolver o saldo de quem envia (compensação), conferindo antes se o destino tem conta na Mock |
+
+### Câmbio (BrasilAPI)
+
+Cada transação mostra o valor em real e em **USD** e **EUR** (`conversoes`), com a taxa e a data da cotação. A cotação é buscada **no registro** e guardada na transação, então a consulta mostra sempre o câmbio do dia em que ela foi feita.
+
+| Regra | Por quê |
+|---|---|
+| Endpoint `GET https://brasilapi.com.br/api/cambio/v1/cotacao/{moeda}/{data}` | Cotação oficial do Banco Central por moeda e data |
+| Taxa = boletim `FECHAMENTO PTAX`, valor de **venda** | Referência oficial do dia |
+| Transação de hoje (ou data futura) consulta o **dia anterior** | A API responde 400 `NO_TODAY_DATE` para o dia atual |
+| A data guardada é a que vem na resposta | Em fim de semana ou feriado, a API devolve o último dia útil (ex.: domingo → sexta) |
+
+**BrasilAPI fora do ar** (ou qualquer falha: tempo limite de 2 s, erro 4xx/5xx, resposta inesperada): o câmbio é informativo e nunca quebra a transação. Ela é registrada normalmente, e a consulta responde com a moeda marcada como `"disponivel": false`. A consulta nunca chama a BrasilAPI (lê o que foi guardado no registro), então ela não cai por causa da API. As falhas também ficam em cache, para a transação não esperar a BrasilAPI de novo a cada registro.
+
+#### Pausa de 5 minutos e cache de falhas
+
+| Situação | O que fica em cache | Por quanto tempo | Efeito |
+|---|---|---|---|
+| Cotação encontrada | A cotação daquela moeda e dia | Até o MS2 reiniciar (cotação de dia passado não muda) | Não chama a BrasilAPI de novo |
+| Sem conexão, tempo limite (2 s) ou erro 5xx | A falha da **BrasilAPI inteira** (pausa) | 5 minutos | Nenhuma moeda é consultada; a conversão sai indisponível na hora, sem esperar 2 s por moeda |
+| Recusa 4xx, resposta sem cotação ou em formato inesperado | A falha **daquela moeda e dia** | 5 minutos | Só aquela moeda e dia deixam de ser consultados; as outras seguem normais |
+
+O tempo é ajustável em `brasilapi.pausa-apos-falha-segundos` (padrão `300`). Cotações já guardadas em cache continuam valendo durante a pausa. Passados os 5 minutos, a próxima transação consulta a BrasilAPI de novo. Para testar, aponte `BRASILAPI_BASE_URL` no `.env` para um endereço inexistente (ex.: `https://invalido.brasilapi.com.br/api`) e reinicie o MS2.
 
 ### API Mock fora do ar
 

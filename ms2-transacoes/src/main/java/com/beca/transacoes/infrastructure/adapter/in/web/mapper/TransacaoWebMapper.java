@@ -1,9 +1,14 @@
 package com.beca.transacoes.infrastructure.adapter.in.web.mapper;
 
 import com.beca.transacoes.application.port.in.RegistrarTransacaoUseCase.RegistrarTransacaoCommand;
+import com.beca.transacoes.domain.model.MoedaEstrangeira;
 import com.beca.transacoes.domain.model.Transacao;
+import com.beca.transacoes.infrastructure.adapter.in.web.dto.ConversaoResponse;
 import com.beca.transacoes.infrastructure.adapter.in.web.dto.RegistrarTransacaoRequest;
 import com.beca.transacoes.infrastructure.adapter.in.web.dto.TransacaoResponse;
+
+import java.util.Arrays;
+import java.util.List;
 
 public final class TransacaoWebMapper {
 
@@ -31,6 +36,16 @@ public final class TransacaoWebMapper {
                 t.getStatus(),
                 t.getMotivoRejeicao(),
                 t.getMotivoRejeicao() == null ? null : t.getMotivoRejeicao().getDescricao(),
-                t.getCriadaEm());
+                t.getCriadaEm(),
+                conversoes(t));
+    }
+
+    /** Uma linha por moeda, sempre na mesma ordem; sem cotação guardada, a moeda aparece como indisponível. */
+    static List<ConversaoResponse> conversoes(Transacao t) {
+        return Arrays.stream(MoedaEstrangeira.values())
+                .map(moeda -> t.cotacao(moeda)
+                        .map(c -> new ConversaoResponse(moeda, true, c.converter(t.getValor()), c.taxa(), c.data()))
+                        .orElseGet(() -> ConversaoResponse.indisponivel(moeda)))
+                .toList();
     }
 }

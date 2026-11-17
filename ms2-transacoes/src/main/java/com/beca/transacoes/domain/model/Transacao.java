@@ -5,6 +5,10 @@ import com.beca.transacoes.domain.exception.TransicaoDeStatusInvalidaException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -30,6 +34,8 @@ public class Transacao {
     private final Instant criadaEm;
     private StatusTransacao status;
     private MotivoRejeicao motivoRejeicao;
+    /** Câmbio do dia da transação (informativo): pode faltar se a BrasilAPI estava fora do ar no registro. */
+    private final Map<MoedaEstrangeira, Cotacao> cotacoes = new EnumMap<>(MoedaEstrangeira.class);
 
     private Transacao(Long id, Long usuarioId, TipoTransacao tipo, BigDecimal valor, Categoria categoria,
                       Long usuarioDestinoId, String descricao, Instant criadaEm,
@@ -66,8 +72,42 @@ public class Transacao {
     public static Transacao reconstituir(Long id, Long usuarioId, TipoTransacao tipo, BigDecimal valor,
                                          Categoria categoria, Long usuarioDestinoId, String descricao,
                                          Instant criadaEm, StatusTransacao status, MotivoRejeicao motivoRejeicao) {
-        return new Transacao(id, usuarioId, tipo, valor, categoria, usuarioDestinoId, descricao,
+        return reconstituir(id, usuarioId, tipo, valor, categoria, usuarioDestinoId, descricao,
+                criadaEm, status, motivoRejeicao, List.of());
+    }
+
+    /** Remonta uma transação gravada junto com as cotações guardadas no registro. */
+    public static Transacao reconstituir(Long id, Long usuarioId, TipoTransacao tipo, BigDecimal valor,
+                                         Categoria categoria, Long usuarioDestinoId, String descricao,
+                                         Instant criadaEm, StatusTransacao status, MotivoRejeicao motivoRejeicao,
+                                         Collection<Cotacao> cotacoes) {
+        Transacao t = new Transacao(id, usuarioId, tipo, valor, categoria, usuarioDestinoId, descricao,
                 criadaEm, status, motivoRejeicao);
+        cotacoes.forEach(c -> t.cotacoes.put(c.moeda(), c));
+        return t;
+    }
+
+    /**
+     * Guarda o câmbio do dia da transação. Só no registro (antes de gravar) e uma vez por moeda:
+     * depois de gravada, a cotação não muda, para a consulta mostrar sempre o câmbio daquele dia.
+     */
+    public void anexarCotacao(Cotacao cotacao) {
+        Objects.requireNonNull(cotacao, "cotacao");
+        if (id != null) {
+            throw new TransicaoDeStatusInvalidaException("A cotação só pode ser guardada no registro da transação.");
+        }
+        if (cotacoes.containsKey(cotacao.moeda())) {
+            throw new TransicaoDeStatusInvalidaException("A cotação de " + cotacao.moeda() + " já foi guardada.");
+        }
+        cotacoes.put(cotacao.moeda(), cotacao);
+    }
+
+    public Optional<Cotacao> cotacao(MoedaEstrangeira moeda) {
+        return Optional.ofNullable(cotacoes.get(moeda));
+    }
+
+    public List<Cotacao> getCotacoes() {
+        return List.copyOf(cotacoes.values());
     }
 
     /**

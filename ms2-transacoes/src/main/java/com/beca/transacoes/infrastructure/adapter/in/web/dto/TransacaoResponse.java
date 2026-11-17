@@ -7,6 +7,7 @@ import com.beca.transacoes.domain.model.TipoTransacao;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 public record TransacaoResponse(
         Long id,
@@ -20,5 +21,6 @@ public record TransacaoResponse(
         StatusTransacao status,
         MotivoRejeicao motivoRejeicao,
         String motivoRejeicaoDescricao,
-        Instant criadaEm) {
+        Instant criadaEm,
+        List<ConversaoResponse> conversoes) {
 }
