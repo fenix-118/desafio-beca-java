@@ -18,8 +18,9 @@ public final class TransacaoWebMapper {
     private TransacaoWebMapper() {
     }
 
-    public static RegistrarTransacaoCommand paraComando(RegistrarTransacaoRequest r) {
-        return new RegistrarTransacaoCommand(r.usuarioId(), r.tipo(), r.valor(), r.categoria(),
+    /** O usuário vem do login, nunca do corpo do pedido. */
+    public static RegistrarTransacaoCommand paraComando(RegistrarTransacaoRequest r, Long usuarioId) {
+        return new RegistrarTransacaoCommand(usuarioId, r.tipo(), r.valor(), r.categoria(),
                 r.usuarioDestinoId(), r.descricao());
     }
 

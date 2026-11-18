@@ -4,6 +4,7 @@ import com.beca.usuarios.application.port.in.AtualizarUsuarioUseCase.AtualizarUs
 import com.beca.usuarios.application.port.in.CriarUsuarioUseCase.CriarUsuarioCommand;
 import com.beca.usuarios.application.port.out.SenhaEncoderPort;
 import com.beca.usuarios.application.port.out.UsuarioRepositoryPort;
+import com.beca.usuarios.domain.exception.CredenciaisInvalidasException;
 import com.beca.usuarios.domain.exception.DadosInvalidosException;
 import com.beca.usuarios.domain.exception.EmailJaCadastradoException;
 import com.beca.usuarios.domain.exception.UsuarioNaoEncontradoException;
@@ -239,5 +240,47 @@ class UsuarioServiceTest {
         assertThrows(UsuarioNaoEncontradoException.class, () -> service.excluir(99L));
 
         verify(repositorio, never()).excluirPorId(any());
+    }
+
+    // ---------- autenticar (tarefa 6.1) ----------
+
+    @Test
+    void autenticaComEmailNormalizadoESenhaQueConfere() {
+        Usuario ana = Usuario.novo("Ana", "ana@beca.com", "hash-bcrypt");
+        when(repositorio.buscarPorEmail("ana@beca.com")).thenReturn(Optional.of(ana));
+        when(senhaEncoder.confere("Senha@123", "hash-bcrypt")).thenReturn(true);
+
+        Usuario autenticado = service.autenticar("  Ana@Beca.COM ", "Senha@123");
+
+        assertThat(autenticado).isSameAs(ana);
+    }
+
+    @Test
+    void senhaErradaNaoAutentica() {
+        Usuario ana = Usuario.novo("Ana", "ana@beca.com", "hash-bcrypt");
+        when(repositorio.buscarPorEmail("ana@beca.com")).thenReturn(Optional.of(ana));
+        when(senhaEncoder.confere("errada123", "hash-bcrypt")).thenReturn(false);
+
+        assertThrows(CredenciaisInvalidasException.class, () -> service.autenticar("ana@beca.com", "errada123"));
+    }
+
+    @Test
+    void emailInexistenteRespondeAMesmaMensagemDaSenhaErrada() {
+        when(repositorio.buscarPorEmail("ninguem@beca.com")).thenReturn(Optional.empty());
+
+        CredenciaisInvalidasException erro = assertThrows(CredenciaisInvalidasException.class,
+                () -> service.autenticar("ninguem@beca.com", "Senha@123"));
+
+        assertThat(erro.getMessage()).isEqualTo(CredenciaisInvalidasException.MENSAGEM);
+        verifyNoInteractions(senhaEncoder);
+    }
+
+    @Test
+    void senhaVaziaOuAcimaDe72BytesNemChegaAoBanco() {
+        assertThrows(CredenciaisInvalidasException.class, () -> service.autenticar("ana@beca.com", ""));
+        assertThrows(CredenciaisInvalidasException.class, () -> service.autenticar("ana@beca.com", "é".repeat(40)));
+        assertThrows(CredenciaisInvalidasException.class, () -> service.autenticar(" ", "Senha@123"));
+
+        verifyNoInteractions(repositorio, senhaEncoder);
     }
 }

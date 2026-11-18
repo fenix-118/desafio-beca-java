@@ -31,6 +31,7 @@ Depois, preencha os valores no `.env`:
 | `POSTGRES_PASSWORD` | Sim | Senha do PostgreSQL |
 | `MOCKAPI_BASE_URL` | Sim, para o MS2 | URL base da API Mock (recurso `contas`); sem ela o MS2 não sobe |
 | `MS1_BASE_URL` | Não | Endereço do MS1 usado pelo MS2 (padrão `http://localhost:8081`) |
+| `SERVICO_TOKEN` | Sim | Token que o MS2 manda ao MS1 para consultar usuários (o mesmo nos dois serviços); use um valor aleatório e longo |
 | `BRASILAPI_BASE_URL` | Não | URL base da BrasilAPI, usada no câmbio (padrão `https://brasilapi.com.br/api`) |
 
 ### 2. Subir o banco
@@ -88,13 +89,13 @@ Para conferir que os dados sobreviveram: `curl -s http://localhost:8081/usuarios
 
 ### 6. Dados de exemplo para a demonstração
 
-Com os serviços no ar, o script abaixo cadastra os usuários do `samples/usuarios-exemplo.csv` no MS1 e registra no MS2 uma sequência de transações de um usuário que tenha conta na API Mock:
+Com os serviços no ar, o script abaixo faz login no MS1, cadastra os usuários do `samples/usuarios-exemplo.csv` e registra no MS2 uma sequência de transações do usuário do login:
 
 ```bash
-bash docker/demo/carregar-dados-demo.sh 3 4
+DEMO_EMAIL=email.do.usuario@example.com bash docker/demo/carregar-dados-demo.sh 4
 ```
 
-Os argumentos são o id do usuário que faz as transações (padrão `3`) e o id do destino da transferência (padrão `4`); os dois precisam existir no MS1 e ter conta na Mock. O script mostra o status de cada transação e termina com o saldo e o resumo de despesas do mês. Rodar de novo cria transações novas (o CSV repetido só gera falhas de e-mail já cadastrado). Os endereços podem ser trocados por `MS1_URL` e `MS2_URL`.
+A senha é pedida na hora (ou vem de `DEMO_SENHA`), e não fica no arquivo nem no histórico do terminal. O argumento é o id do destino da transferência (padrão `4`); o usuário do login e o destino precisam ter conta na Mock. O script mostra o status de cada transação e termina com o saldo e o resumo de despesas do mês. Rodar de novo cria transações novas (o CSV repetido só gera falhas de e-mail já cadastrado). Os endereços podem ser trocados por `MS1_URL` e `MS2_URL`.
 
 ### Serviços
 
@@ -119,11 +120,11 @@ Pelo Swagger UI é possível testar todos os endpoints, inclusive a importação
 
 | Método e rota | O que faz |
 |---|---|
-| `POST /transacoes` | Registra depósito, retirada, transferência ou compra e responde 201 com o status (`APROVADA` ou `REJEITADA`, com o motivo) |
+| `POST /transacoes` | Registra depósito, retirada, transferência ou compra do usuário do login e responde 201 com o status (`APROVADA` ou `REJEITADA`, com o motivo) |
 | `GET /transacoes/{id}` | Consulta uma transação |
-| `GET /transacoes?usuarioId=1&inicio=2026-11-01&fim=2026-11-30&tipo=COMPRA` | Lista as transações do usuário; período e tipo são opcionais |
-| `GET /contas/{usuarioId}/saldo` | Saldo e limites lidos da API Mock no momento, o gasto de hoje e quanto ainda pode sair |
-| `GET /despesas/resumo?usuarioId=3&inicio=2026-11-01&fim=2026-11-30` | Análise de despesas: total por categoria, por dia e por mês, com o total geral; sem datas, usa o mês atual |
+| `GET /transacoes?inicio=2026-11-01&fim=2026-11-30&tipo=COMPRA` | Lista as transações do usuário do login; período e tipo são opcionais |
+| `GET /contas/saldo` | Saldo e limites do usuário do login, lidos da API Mock no momento, o gasto de hoje e quanto ainda pode sair |
+| `GET /despesas/resumo?inicio=2026-11-01&fim=2026-11-30` | Análise de despesas do usuário do login: total por categoria, por dia e por mês, com o total geral; sem datas, usa o mês atual |
 
 Regras principais: valor em BRL com até 2 casas decimais; saídas (retirada, transferência e compra) exigem categoria; transferência exige `usuarioDestinoId`; saídas são conferidas contra saldo, limite por transação e limite diário (dia no fuso de São Paulo); depósito não tem limite nem exige saldo, mas precisa da conta na Mock para ser creditado: sem conta, ou com a Mock fora do ar, ele é rejeitado.
 
@@ -171,7 +172,7 @@ Sem saldo confirmado, o MS2 nunca aprova às cegas (tempo limite de 2 s em cada 
 | Onde | Resposta |
 |---|---|
 | `POST /transacoes` (qualquer tipo) | 201, `REJEITADA` com `SERVICO_SALDO_INDISPONIVEL`; a transação fica gravada e a descrição explica o motivo |
-| `GET /contas/{usuarioId}/saldo` | 503, "Serviço de saldo indisponível; tente novamente em instantes." |
+| `GET /contas/saldo` | 503, "Serviço de saldo indisponível; tente novamente em instantes." |
 
 Para testar: troque `MOCKAPI_BASE_URL` no `.env` por um endereço inexistente (ex.: `https://invalido.mockapi.io/api/v1`), reinicie o MS2 e faça uma compra. Depois volte a URL certa.
 
@@ -207,8 +208,6 @@ O MS2 consulta o MS1 (`GET /usuarios/{id}`) antes de registrar. Pela IDE, suba o
 | Só uma das datas → 400; `inicio` depois de `fim` → 400 | Evita um período ambíguo |
 | Período de no máximo 366 dias → senão 400 | Um intervalo de vários anos carregaria todas as transações na memória de uma vez |
 
-> **Pendência de segurança:** neste PR, `GET /despesas/resumo` ainda não exige login, como as outras rotas do MS2: qualquer pessoa consulta o resumo de outro usuário trocando o `usuarioId`. A autenticação, com o `usuarioId` conferido contra o usuário do login, entra no PR do pedido 6 (login).
-
 Exemplo de resposta:
 
 ```json
@@ -231,6 +230,32 @@ cd ../ms2-transacoes && mvn clean test
 
 Pelo IntelliJ: painel **Maven** → módulo → **Lifecycle** → `clean` + `test`. Cada build gera o relatório de cobertura do JaCoCo em `target/site/jacoco/index.html` (abra no navegador): a cobertura por pacote e por classe, e as linhas cobertas e não cobertas de cada arquivo. As classes `*Application` ficam de fora, porque só sobem o Spring.
 
+## Login (MS1 e MS2)
+
+Todas as rotas do MS2 pedem **login básico** (HTTP Basic) com o e-mail e a senha cadastrados no MS1. A cada requisição, o MS2 confere as credenciais no MS1 pelo nome do serviço; o MS2 nunca guarda senha.
+
+| Rota | Quem acessa |
+|---|---|
+| MS1 `POST /autenticacao` | Aberta: confere e-mail e senha e devolve `id`, `nome` e `email` (sem senha) |
+| MS1 `POST /usuarios` (cadastro) e `/usuarios/importacao` | Abertas |
+| MS1 `GET`, `PUT` e `DELETE /usuarios/{id}` | Login do **próprio** usuário; o `GET` também aceita o MS2, com o token de serviço (`X-Servico-Token`) |
+| MS1 `GET /usuarios` (lista de todos) | Removida: expunha o nome e o e-mail de todos os usuários |
+| MS2 `/transacoes`, `/contas/saldo`, `/despesas/resumo` | Login obrigatório. O usuário vem **sempre do login**: não há `usuarioId` no corpo nem na URL, então não dá para pedir ou registrar em nome de outro |
+| `/swagger-ui.html`, `/v3/api-docs`, `/actuator/health` (MS1 e MS2) | Abertas: documentação e health check do Compose |
+
+| Situação | Resposta |
+|---|---|
+| Sem login, ou login em formato errado | 401, com `WWW-Authenticate: Basic` |
+| E-mail inexistente ou senha errada | 401 "E-mail ou senha inválidos." (a mesma mensagem nos dois casos) |
+| `GET /transacoes/{id}` de uma transação de outro usuário | 403 |
+| MS1 fora do ar ao conferir o login | 503 |
+
+**No Swagger do MS2:** clique em **Authorize**, informe o e-mail e a senha do MS1 e depois use o **Try it out** normalmente. **Pelo terminal:** `curl -u email@example.com "http://localhost:8082/contas/saldo"` (só o e-mail: o `curl` pede a senha sem mostrar, e ela não fica no histórico).
+
+**Como o MS2 consulta o MS1:** para conferir o dono e o destino das transações, o MS2 chama `GET /usuarios/{id}` com o cabeçalho `X-Servico-Token`, que precisa ser igual ao `SERVICO_TOKEN` do MS1. O token só vale para essa consulta: alterar e excluir exigem o login do próprio usuário. Sem `SERVICO_TOKEN` no `.env`, os dois serviços param logo na subida com uma mensagem dizendo o que falta.
+
+> **Melhoria conhecida:** o `POST /autenticacao` não limita tentativas, então alguém poderia testar muitas senhas seguidas. Em produção, a solução seria limitar as tentativas por e-mail e por IP (por exemplo, bloquear por alguns minutos depois de 5 erros) e registrar as falhas para monitoramento.
+
 ## Segurança e segredos
 
 Revisão feita em 11/11/2026 (tarefa 8.7), em **todo o histórico** do Git, não só na versão atual:
@@ -242,7 +267,7 @@ Revisão feita em 11/11/2026 (tarefa 8.7), em **todo o histórico** do Git, não
 | URL real da API Mock (com o id do projeto) | Nenhuma; fica só no `.env` |
 | `.env.example` | Só valores de exemplo (`troque_aqui`, `SEU_ID`) |
 | Senhas nos CSVs de `samples/` e nos testes | Fictícias, de propósito (`Exemplo#2026a`, `Senha@123`) |
-| Senha nas respostas e nos logs | Fora: a resposta de usuário não tem senha, o `toString` dos pedidos mascara a senha e o log de violação no banco grava só o nome da restrição |
+| Senha nas respostas e nos logs | Fora: nem a resposta de usuário nem a do login têm senha, o `toString` dos pedidos mascara a senha, o log de violação no banco grava só o nome da restrição, e o login (no MS1 e no filtro do MS2) não registra e-mail nem senha |
 | Actuator | Só `/actuator/health` exposto |
 | Containers | Portas só em `127.0.0.1`, `no-new-privileges` e `cap_drop: ALL` |
 

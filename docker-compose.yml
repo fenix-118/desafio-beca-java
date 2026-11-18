@@ -27,6 +27,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/usuarios_db
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?defina POSTGRES_USER no arquivo .env}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
+      # Token do MS2 para consultar usuários no MS1 (o mesmo nos dois serviços).
+      SERVICO_TOKEN: ${SERVICO_TOKEN:?defina SERVICO_TOKEN no arquivo .env}
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -53,6 +55,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/transacoes_db
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?defina POSTGRES_USER no arquivo .env}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
+      # Token do MS2 para consultar usuários no MS1 (o mesmo nos dois serviços).
+      SERVICO_TOKEN: ${SERVICO_TOKEN:?defina SERVICO_TOKEN no arquivo .env}
       MOCKAPI_BASE_URL: ${MOCKAPI_BASE_URL:?defina MOCKAPI_BASE_URL no arquivo .env}
       BRASILAPI_BASE_URL: ${BRASILAPI_BASE_URL:-https://brasilapi.com.br/api}
       # Fala com o MS1 pelo nome do serviço na rede do Compose, não por localhost.

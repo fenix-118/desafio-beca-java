@@ -25,6 +25,8 @@ management:
 ms1:
   base-url: ${MS1_BASE_URL:http://localhost:8081}
   timeout-ms: 2000
+  # Mesmo SERVICO_TOKEN do MS1: identifica o MS2 ao consultar usuários.
+  token-servico: ${SERVICO_TOKEN:}
 
 # API Mock (contas): a URL fica só no .env (MOCKAPI_BASE_URL), nunca no código.
 mockapi:
