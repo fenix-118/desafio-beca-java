@@ -13,6 +13,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -22,6 +24,7 @@ import java.time.LocalDate;
  * Tabela do transacoes_db. O usuario_id é só um número: o MS2 não tem chave estrangeira
  * nem acesso às tabelas do MS1, que vive em outro banco.
  */
+/** Enums gravados como texto em qualquer banco (PostgreSQL e o H2 dos testes), como na migração V1. */
 @Entity
 @Table(name = "transacoes",
         indexes = @Index(name = "idx_transacoes_usuario_data", columnList = "usuario_id, criada_em"))
@@ -35,6 +38,7 @@ public class TransacaoEntity {
     private Long usuarioId;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 20, updatable = false)
     private TipoTransacao tipo;
 
@@ -42,6 +46,7 @@ public class TransacaoEntity {
     private BigDecimal valor;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(length = 20, updatable = false)
     private Categoria categoria;
 
@@ -52,10 +57,12 @@ public class TransacaoEntity {
     private String descricao;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 20)
     private StatusTransacao status;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "motivo_rejeicao", length = 40)
     private MotivoRejeicao motivoRejeicao;
 

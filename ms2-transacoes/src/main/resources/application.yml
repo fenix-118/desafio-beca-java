@@ -12,8 +12,13 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:${POSTGRES_PASSWORD:}}
   jpa:
     hibernate:
-      ddl-auto: update
+      # O esquema vem das migrações do Flyway (db/migration); o Hibernate só confere se as entidades batem.
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    # Banco que já tinha as tabelas (criadas pelo antigo ddl-auto: update): marca a V1 como aplicada sem rodá-la.
+    baseline-on-migrate: true
+    baseline-version: 1
 
 management:
   endpoints:
