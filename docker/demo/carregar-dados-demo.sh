@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Carrega dados de exemplo para a demonstração (tarefa 9.3).
 # Uso: DEMO_EMAIL=ana.souza@example.com bash docker/demo/carregar-dados-demo.sh [usuarioDestinoId]
-# A senha vem de DEMO_SENHA ou é pedida na hora (não fica no arquivo nem no histórico).
+# A senha vem de DEMO_SENHA (leia com: read -rsp "Senha: " DEMO_SENHA; export DEMO_SENHA) ou é pedida na hora.
+# Nunca escreva a senha na linha de comando: ela iria para o histórico do terminal.
 # O usuário do login e o destino precisam existir no MS1 e ter conta na API Mock.
 set -euo pipefail
 
