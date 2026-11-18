@@ -14,4 +14,9 @@ public class BCryptSenhaEncoderAdapter implements SenhaEncoderPort {
     public String codificar(String senhaPura) {
         return encoder.encode(senhaPura);
     }
+
+    @Override
+    public boolean confere(String senhaPura, String senhaHash) {
+        return encoder.matches(senhaPura, senhaHash);
+    }
 }

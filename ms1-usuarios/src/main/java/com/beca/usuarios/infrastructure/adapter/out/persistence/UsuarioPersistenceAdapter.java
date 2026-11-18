@@ -49,6 +49,11 @@ public class UsuarioPersistenceAdapter implements UsuarioRepositoryPort {
     }
 
     @Override
+    public Optional<Usuario> buscarPorEmail(String email) {
+        return jpa.findByEmail(email).map(this::paraDominio);
+    }
+
+    @Override
     public boolean existePorId(Long id) {
         return jpa.existsById(id);
     }

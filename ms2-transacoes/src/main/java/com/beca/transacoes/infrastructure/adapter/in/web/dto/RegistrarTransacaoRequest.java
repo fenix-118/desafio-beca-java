@@ -14,11 +14,6 @@ import java.math.BigDecimal;
 
 /** As mensagens vêm de MensagensTransacao: a mesma regra responde igual aqui e no domínio. */
 public record RegistrarTransacaoRequest(
-        @Schema(example = "1")
-        @NotNull(message = MensagensTransacao.USUARIO_OBRIGATORIO)
-        @Positive(message = MensagensTransacao.USUARIO_OBRIGATORIO)
-        Long usuarioId,
-
         @Schema(example = "DEPOSITO")
         @NotNull(message = MensagensTransacao.TIPO_OBRIGATORIO)
         TipoTransacao tipo,

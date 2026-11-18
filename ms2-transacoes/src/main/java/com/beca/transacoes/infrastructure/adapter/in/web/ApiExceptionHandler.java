@@ -7,6 +7,8 @@ import com.beca.transacoes.domain.exception.ContaNaoEncontradaException;
 import com.beca.transacoes.domain.exception.DadosInvalidosException;
 import com.beca.transacoes.domain.exception.TransacaoNaoEncontradaException;
 import com.beca.transacoes.domain.exception.UsuarioNaoEncontradoException;
+import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.AcessoNegadoException;
+import com.beca.transacoes.infrastructure.adapter.in.web.seguranca.NaoAutenticadoException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -37,6 +39,16 @@ public class ApiExceptionHandler {
 
     static final String CORPO_ILEGIVEL =
             "Corpo da requisição inválido: confira o JSON e os valores aceitos em 'tipo' e 'categoria'.";
+
+    @ExceptionHandler(NaoAutenticadoException.class)
+    public ProblemDetail naoAutenticado(NaoAutenticadoException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(AcessoNegadoException.class)
+    public ProblemDetail acessoNegado(AcessoNegadoException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
 
     @ExceptionHandler(TransacaoNaoEncontradaException.class)
     public ProblemDetail naoEncontrada(TransacaoNaoEncontradaException ex) {
